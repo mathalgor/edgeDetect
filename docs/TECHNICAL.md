@@ -588,6 +588,23 @@ color)`; Cancel calls `cancelRectSelection()`. The commit walks
 in `out_` and emits one `editOp(changed, true)` so undo treats the
 whole bulk as one step.
 
+Live preview: as the user adjusts the dialog, MainWindow calls
+`view_->setRectPreview(threshold, mode, color)`, which rebuilds
+`previewOrange_` / `previewYellow_` and a composed `previewImage_`
+drawn over `vis_` by `paintEvent`. Orange = pixels that pass all three
+filters (spatial / threshold / colour) and aren't already in `out_`;
+dimmed yellow = pixels of eligible components whose label value rejects
+the threshold. Same colors as cannyToOutline, defined once in
+`common/EditColors.h` (`candidateOrange()`, `candidateYellow()`,
+`rubberBand()`, `rubberBandFill()`).
+
+The Gray colour option in the combo is always present. If the user
+picks Gray while `allowGrayEdit_` is off, MainWindow shows a
+Yes/Cancel question dialog inline. Yes flips
+`Edit → Allow click on gray (advanced)` on (which forwards to
+`view_->setAllowGrayEdit(true)`) and the combo stays on Gray. Cancel
+reverts the combo to the previous entry via a `QSignalBlocker`.
+
 ### 4.7 Save
 
 `outputFileFmt()` returns `cv::bitwise_not(out_)` — back to the standard

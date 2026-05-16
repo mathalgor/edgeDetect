@@ -266,12 +266,11 @@ void OcMainWindow::onRectSelectionFinished()
     auto* colorCb = new QComboBox(dlg);
     colorCb->addItem("Red (only outline 2)",   int(OcViewWidget::CandColor::Red));
     colorCb->addItem("Green (only outline 1)", int(OcViewWidget::CandColor::Green));
-    if (view_->grayCandidateAvailable()) {
-        colorCb->addItem("Gray (no outline)",  int(OcViewWidget::CandColor::Gray));
-    }
+    // Gray is always offered; if "Allow click on gray" is off when the
+    // user picks it we ask first and either enable + keep, or revert.
+    colorCb->addItem("Gray (no outline)",      int(OcViewWidget::CandColor::Gray));
     {
-        const int wanted = lastCandidateColor_;
-        const int idx = colorCb->findData(wanted);
+        const int idx = colorCb->findData(lastCandidateColor_);
         colorCb->setCurrentIndex(idx >= 0 ? idx : 0);
     }
 
@@ -286,6 +285,47 @@ void OcMainWindow::onRectSelectionFinished()
     lay->addWidget(new QLabel("Add color:"));
     lay->addWidget(colorCb);
     lay->addWidget(bb);
+
+    auto pushPreview = [this, sb, modeCb, colorCb]() {
+        const auto mode  = (modeCb->currentIndex() == 0)
+            ? OcViewWidget::CandMode::Touching
+            : OcViewWidget::CandMode::Inside;
+        const auto color = static_cast<OcViewWidget::CandColor>(
+            colorCb->currentData().toInt());
+        view_->setRectPreview(sb->value(), mode, color);
+    };
+    // Initial preview with the current defaults.
+    pushPreview();
+    connect(sb, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [pushPreview](int){ pushPreview(); });
+    connect(modeCb, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [pushPreview](int){ pushPreview(); });
+    connect(colorCb, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this, colorCb, pushPreview](int) {
+        // If user picks Gray but advanced-edit is off, ask now.
+        const auto color = static_cast<OcViewWidget::CandColor>(
+            colorCb->currentData().toInt());
+        if (color == OcViewWidget::CandColor::Gray && !view_->allowGrayEdit()) {
+            QMessageBox box(QMessageBox::Question,
+                "Allow click on gray",
+                "Adding gray-only pixels (not in any outline) is an "
+                "advanced edit that is currently disabled.\n\n"
+                "Enable it for this session and use it?\n\n"
+                "You can also toggle it later from "
+                "Edit → Allow click on gray.",
+                QMessageBox::Yes | QMessageBox::Cancel, this);
+            box.setDefaultButton(QMessageBox::Yes);
+            box.setEscapeButton(QMessageBox::Cancel);
+            if (box.exec() == QMessageBox::Yes) {
+                aAllowGrayEdit_->setChecked(true);  // setAllowGrayEdit(true)
+            } else {
+                // Revert: pick the first non-Gray entry (Red = index 0).
+                QSignalBlocker b(colorCb);
+                colorCb->setCurrentIndex(0);
+            }
+        }
+        pushPreview();
+    });
 
     connect(bb, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
     connect(bb, &QDialogButtonBox::rejected, dlg, &QDialog::reject);

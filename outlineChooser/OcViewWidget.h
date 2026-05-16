@@ -69,6 +69,10 @@ public:
     // True when a rect/strip Gray-color commit would be meaningful here
     // (allowGrayEdit_ is on and the active preset has a GraySource bg).
     bool grayCandidateAvailable() const;
+    // Recomputes the live preview (orange = will be added, yellow =
+    // eligible component but threshold rejects). Called by MainWindow
+    // as the dialog values change.
+    void setRectPreview(int threshold, CandMode mode, CandColor color);
 
 signals:
     void hudUpdate(const QString& s);
@@ -157,7 +161,11 @@ private:
     QPoint     stripPressWidget_;
     bool       rectDragging_ = false;
     QPoint     rectStart_, rectEnd_;
-    cv::Mat    lastPolyMask_;           // 0/255 mask of the last committed polygon
+    cv::Mat    lastPolyMask_;           // 0/255 mask of the last captured polygon
+    cv::Mat    previewOrange_;          // 0/255 — pixels that WILL be added
+    cv::Mat    previewYellow_;          // 0/255 — eligible but threshold rejects
+    QImage     previewImage_;           // composed RGBA overlay
+    bool       previewActive_ = false;
 
     std::vector<ViewPreset> presets_;
     int presetIndex_ = 0;

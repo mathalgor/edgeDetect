@@ -1,5 +1,6 @@
 #include "CannyViewWidget.h"
 #include "CursorUtils.h"
+#include "EditColors.h"
 
 #include <QPainter>
 #include <QMouseEvent>
@@ -488,8 +489,8 @@ void CannyViewWidget::paintEvent(QPaintEvent*)
         const QPointF b = imageToWidget(QPointF(rectEndImg_));
         QRectF rb(QPointF(std::min(a.x(), b.x()), std::min(a.y(), b.y())),
                   QPointF(std::max(a.x(), b.x()) + 1, std::max(a.y(), b.y()) + 1));
-        p.setPen(QPen(QColor(0, 200, 255), 1, Qt::DashLine));
-        p.setBrush(QColor(0, 200, 255, 40));
+        p.setPen(QPen(edit_colors::rubberBand(), 1, Qt::DashLine));
+        p.setBrush(edit_colors::rubberBandFill());
         p.drawRect(rb);
     }
 
@@ -1516,9 +1517,13 @@ void CannyViewWidget::rebuildRectOverlay()
         const uchar* yr = yellowMask_.ptr<uchar>(y);
         const uchar* orr = orangeMask_.ptr<uchar>(y);
         cv::Vec4b* dr = rgba.ptr<cv::Vec4b>(y);
+        const QColor co = edit_colors::candidateOrange();
+        const QColor cy = edit_colors::candidateYellow();
+        const cv::Vec4b voc(co.red(), co.green(), co.blue(), co.alpha());
+        const cv::Vec4b vyl(cy.red(), cy.green(), cy.blue(), cy.alpha());
         for (int x = 0; x < cols; ++x) {
-            if (orr[x])     dr[x] = cv::Vec4b(255, 140, 0, 210);   // orange
-            else if (yr[x]) dr[x] = cv::Vec4b(200, 200, 35, 190);  // dimmed yellow
+            if (orr[x])     dr[x] = voc;
+            else if (yr[x]) dr[x] = vyl;
         }
     }
     rectOverlayImage_ = QImage(rgba.data, cols, rows, int(rgba.step),

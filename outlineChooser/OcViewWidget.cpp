@@ -1,5 +1,6 @@
 #include "OcViewWidget.h"
 #include "CursorUtils.h"
+#include "EditColors.h"
 
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -189,8 +190,86 @@ void OcViewWidget::cancelStripInProgress()
 void OcViewWidget::cancelRectSelection()
 {
     lastPolyMask_.release();
+    previewOrange_.release();
+    previewYellow_.release();
+    previewImage_ = {};
+    previewActive_ = false;
     rectDragging_ = false;
     stripPhase_ = StripPhase::None;
+    update();
+}
+
+void OcViewWidget::setRectPreview(int threshold, CandMode mode, CandColor color)
+{
+    if (lastPolyMask_.empty() || labels_.empty() || src_.empty()) {
+        previewActive_ = false;
+        previewImage_ = {};
+        update();
+        return;
+    }
+    const int rows = src_.rows, cols = src_.cols;
+
+    // Count pixels of each label inside the polygon.
+    std::vector<int> countIn(labelSize_.size(), 0);
+    for (int y = 0; y < rows; ++y) {
+        const uchar* pm = lastPolyMask_.ptr<uchar>(y);
+        const int*   lr = labels_.ptr<int>(y);
+        for (int x = 0; x < cols; ++x) {
+            if (!pm[x]) continue;
+            const int L = lr[x];
+            if (L > 0 && L < int(countIn.size())) ++countIn[L];
+        }
+    }
+    // includeBySpatial[L] = 1 if eligible by Touching/Inside (no threshold yet).
+    std::vector<uchar> includeBySpatial(labelSize_.size(), 0);
+    for (int L = 1; L < int(labelSize_.size()); ++L) {
+        if (countIn[L] == 0) continue;
+        if (mode == CandMode::Touching || countIn[L] == labelSize_[L]) {
+            includeBySpatial[L] = 1;
+        }
+    }
+    previewOrange_ = cv::Mat::zeros(src_.size(), CV_8UC1);
+    previewYellow_ = cv::Mat::zeros(src_.size(), CV_8UC1);
+    for (int y = 0; y < rows; ++y) {
+        const int*   lr = labels_.ptr<int>(y);
+        const uchar* o1 = o1_.ptr<uchar>(y);
+        const uchar* o2 = o2_.ptr<uchar>(y);
+        const uchar* oo = out_.ptr<uchar>(y);
+        uchar* orng = previewOrange_.ptr<uchar>(y);
+        uchar* yelw = previewYellow_.ptr<uchar>(y);
+        for (int x = 0; x < cols; ++x) {
+            const int L = lr[x];
+            if (L <= 0 || !includeBySpatial[L]) continue;
+            if (oo[x]) continue;
+            bool match = false;
+            switch (color) {
+                case CandColor::Red:   match =  o2[x] && !o1[x]; break;
+                case CandColor::Green: match =  o1[x] && !o2[x]; break;
+                case CandColor::Gray:  match = !o1[x] && !o2[x]; break;
+            }
+            if (!match) continue;
+            if (labelValue_[L] <= threshold) orng[x] = 255;
+            else                              yelw[x] = 255;
+        }
+    }
+    // Compose RGBA image.
+    cv::Mat rgba(rows, cols, CV_8UC4, cv::Scalar(0, 0, 0, 0));
+    const QColor co = edit_colors::candidateOrange();
+    const QColor cy = edit_colors::candidateYellow();
+    const cv::Vec4b vo(co.red(), co.green(), co.blue(), co.alpha());
+    const cv::Vec4b vy(cy.red(), cy.green(), cy.blue(), cy.alpha());
+    for (int y = 0; y < rows; ++y) {
+        const uchar* orng = previewOrange_.ptr<uchar>(y);
+        const uchar* yelw = previewYellow_.ptr<uchar>(y);
+        cv::Vec4b* dr = rgba.ptr<cv::Vec4b>(y);
+        for (int x = 0; x < cols; ++x) {
+            if      (orng[x]) dr[x] = vo;
+            else if (yelw[x]) dr[x] = vy;
+        }
+    }
+    previewImage_ = QImage(rgba.data, cols, rows, int(rgba.step),
+                           QImage::Format_RGBA8888).copy();
+    previewActive_ = true;
     update();
 }
 
@@ -248,6 +327,10 @@ void OcViewWidget::commitRectSelection(int threshold, CandMode mode, CandColor c
         }
     }
     lastPolyMask_.release();
+    previewOrange_.release();
+    previewYellow_.release();
+    previewImage_ = {};
+    previewActive_ = false;
     if (!changed.empty()) {
         updateVisualizationAt(changed);
         if (!dirty_) { dirty_ = true; emit dirtyChanged(true); }
@@ -484,13 +567,19 @@ void OcViewWidget::paintEvent(QPaintEvent*)
     p.setRenderHint(QPainter::SmoothPixmapTransform, !panning_ && scale_ < 1.0);
     p.drawImage(dst, vis_);
 
+    // Live candidate preview overlay (orange = will be added, yellow =
+    // eligible but threshold rejects). Same colors as cannyToOutline.
+    if (previewActive_ && !previewImage_.isNull()) {
+        p.drawImage(dst, previewImage_);
+    }
+
     // Rubber-band rect (during drag).
     if (rectDragging_) {
         const QPointF a = imageToWidget(QPointF(rectStart_.x(), rectStart_.y()));
         const QPointF b = imageToWidget(QPointF(rectEnd_.x() + 1, rectEnd_.y() + 1));
         QRectF r(a, b);
-        p.setPen(QPen(QColor(255, 220, 0, 220), 1, Qt::DashLine));
-        p.setBrush(QColor(255, 220, 0, 40));
+        p.setPen(QPen(edit_colors::rubberBand(), 1, Qt::DashLine));
+        p.setBrush(edit_colors::rubberBandFill());
         p.drawRect(r.normalized());
     }
     // Oriented strip (P1 set / P2 set).
@@ -499,7 +588,7 @@ void OcViewWidget::paintEvent(QPaintEvent*)
         const QPointF b = (stripPhase_ == StripPhase::P1Set)
             ? imageToWidget(QPointF(stripCursor_.x() + 0.5, stripCursor_.y() + 0.5))
             : imageToWidget(QPointF(stripP2_.x() + 0.5, stripP2_.y() + 0.5));
-        p.setPen(QPen(QColor(255, 220, 0, 220), 1, Qt::DashLine));
+        p.setPen(QPen(edit_colors::rubberBand(), 1, Qt::DashLine));
         p.drawLine(a, b);
         if (stripPhase_ == StripPhase::P2Set) {
             const auto corners = stripCorners(stripP1_, stripP2_, stripCursor_);
@@ -508,34 +597,9 @@ void OcViewWidget::paintEvent(QPaintEvent*)
                 for (const auto& c : corners) {
                     poly << imageToWidget(QPointF(c.x + 0.5, c.y + 0.5));
                 }
-                p.setBrush(QColor(255, 220, 0, 40));
+                p.setBrush(edit_colors::rubberBandFill());
                 p.drawPolygon(poly);
             }
-        }
-    }
-    // Pending (already finalized) polygon outline.
-    if (!lastPolyMask_.empty() && !rectDragging_ && stripPhase_ == StripPhase::None) {
-        // Cheap visualization: just outline its bounding rect.
-        cv::Rect bb;
-        // Compute bounding box of non-zero pixels.
-        int x0 = lastPolyMask_.cols, y0 = lastPolyMask_.rows, x1 = -1, y1 = -1;
-        for (int y = 0; y < lastPolyMask_.rows; ++y) {
-            const uchar* m = lastPolyMask_.ptr<uchar>(y);
-            for (int x = 0; x < lastPolyMask_.cols; ++x) {
-                if (!m[x]) continue;
-                if (x < x0) x0 = x;
-                if (y < y0) y0 = y;
-                if (x > x1) x1 = x;
-                if (y > y1) y1 = y;
-            }
-        }
-        if (x1 >= x0 && y1 >= y0) {
-            const QPointF a = imageToWidget(QPointF(x0, y0));
-            const QPointF b = imageToWidget(QPointF(x1 + 1, y1 + 1));
-            QRectF r(a, b);
-            p.setPen(QPen(QColor(0, 200, 255, 220), 1, Qt::DashLine));
-            p.setBrush(Qt::NoBrush);
-            p.drawRect(r.normalized());
         }
     }
 }

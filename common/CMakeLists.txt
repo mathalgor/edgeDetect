@@ -5,6 +5,7 @@ add_library(edgeDetectCommon STATIC
         AppConfig.h
         CursorUtils.cpp
         CursorUtils.h
+        EditColors.h
         OriginalLoader.cpp
         OriginalLoader.h
         ProjectTimeDialog.cpp

@@ -294,8 +294,16 @@ On release, a small floating dialog (stays on top, non-modal) asks for:
 * **Spatial** — *Touching* (any pixel of the component inside the
   polygon) or *Inside* (component fully inside).
 * **Add color** — *Red* (only-outline-2 pixels), *Green* (only-outline-1),
-  or *Gray* (no outline at all; only shown when **Allow click on gray**
-  is enabled and the active preset has a gray-source background).
+  or *Gray* (no outline at all). Picking *Gray* while **Edit → Allow
+  click on gray** is off pops a confirmation; **Enter/Yes** turns it on
+  for the session, **Esc/Cancel** reverts the combo to the previous
+  selection.
+
+While the dialog is open the eligible pixels are previewed live: the
+ones that **will** be committed at the current settings show in
+**orange**, while eligible-component pixels that the **threshold
+rejects** show in **dimmed yellow** — same colors as cannyToOutline.
+Adjust the spinbox / combos and the overlay updates in place.
 
 OK applies; Cancel discards. The commit is one undo step.
 
