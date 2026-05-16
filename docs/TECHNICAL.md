@@ -497,6 +497,7 @@ Built-in presets (hard-coded in `OcViewWidget::buildDefaultPresets()`):
 | 6 | Result + outline 1 (green)      | White       | Black for `out=1`; green for `in1=1 && out=0` (cells 4 and 6); rest transparent. |
 | 7 | Result + outline 2 (red)        | White       | Black for `out=1`; red for `in2=1 && out=0` (cells 2 and 6); rest transparent. |
 | 8 | Gray + result + diff            | GraySource  | Standard palette over the multi-canny gray. The only preset whose background visibly distinguishes plain-gray pixels (cell 0 with `src<255`) — enables the "click on gray" advanced edit. |
+| 9 | Original only                   | Original    | All cells transparent — just the original photo. Display-only. |
 
 Switching presets:
 

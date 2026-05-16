@@ -397,6 +397,9 @@ void OcViewWidget::buildDefaultPresets()
     // since only here can the user actually see the gray edge pixels.
     add("Gray + result + diff",     ViewPreset::Background::GraySource,
         T,     BLK,   RED,   BLK,   GRN,   BLK,   YEL,   BLK);
+    // Pure original photo — every cell transparent, no overlays.
+    add("Original only",            ViewPreset::Background::Original,
+        T,     T,     T,     T,     T,     T,     T,     T);
 }
 
 void OcViewWidget::setConn8(bool on)

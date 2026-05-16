@@ -221,6 +221,7 @@ final result.
 | 6   | Result + outline 1 (green) | Result in black + the *non-accepted* outline-1 pixels in green (so you can see in isolation what only outline 1 would still add). |
 | 7   | Result + outline 2 (red)   | Same idea for outline 2. |
 | 8   | Gray + result + diff       | Standard palette on a gray-source background. The only preset that supports the "click on gray" advanced edit (see below). |
+| 9   | Original only              | Just the original photo, no overlays. Display-only. |
 
 Same shortcuts as cannyToOutline: digit keys pick a preset, **Tab** swaps
 with the previous one.
