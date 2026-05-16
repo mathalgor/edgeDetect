@@ -19,6 +19,7 @@ class QMenu;
 class QSlider;
 class QSpinBox;
 class QCheckBox;
+class QComboBox;
 class QDialog;
 class CannyViewWidget;
 
@@ -41,12 +42,9 @@ private slots:
     void onHiChanged(int v);
     void onLockToggled(bool on);
     void onFilterToggled(bool on);
-    void onSourceToggled(bool on);
-    void onOutlineToggled(bool on);
     void onMinSizeChanged(int v);
     void onMinExtentChanged(int v);
-    void onBlackToggled(bool on);
-    void onHideDoneToggled(bool on);
+    void setViewMode(int idx);
     void onJoinTolChanged(int v);
     void onAllDarkerToggled(bool on);
     void onConn8Toggled(bool on);
@@ -86,11 +84,10 @@ private:
     QCheckBox* lockCb_   = nullptr;
     QCheckBox* filterCb_ = nullptr;
     QCheckBox* filterOutlineCb_ = nullptr;
-    QCheckBox* originalCb_ = nullptr;
-    QCheckBox* sourceCb_  = nullptr;
-    QCheckBox* outlineCb_ = nullptr;
-    QCheckBox* blackCb_   = nullptr;
-    QCheckBox* hideDoneCb_= nullptr;
+    QComboBox* viewModeCb_ = nullptr;
+    int        viewMode_ = 5;       // default = "Gray source + red outline"
+    int        prevViewMode_ = 5;
+    bool       hasOriginal_ = false;
     QSpinBox*  minSizeSpin_   = nullptr;
     QSpinBox*  minExtentSpin_ = nullptr;
     QSpinBox*  joinTolSpin_   = nullptr;

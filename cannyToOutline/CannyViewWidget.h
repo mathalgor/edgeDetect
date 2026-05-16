@@ -26,6 +26,7 @@ public:
     void setShowOutline(bool on);
     void setBlackMode(bool on);
     void setHideDone(bool on);
+    bool showSource() const { return showSource_; }
     void setMinSize(int n);                  // 0 = disabled
     void setMinExtent(double d);             // 0 = disabled
     void setJoinTol(int tol);                // widens flood-fill by ±tol

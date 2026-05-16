@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QKeySequence>
 #include <QShortcut>
+#include <QStandardItemModel>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -189,15 +190,18 @@ void CannyMainWindow::createUi()
     filterCb_  = new QCheckBox("filter");
     filterOutlineCb_ = new QCheckBox("filter outline");
     filterOutlineCb_->setToolTip("Apply lo..hi range to outline display");
-    originalCb_ = new QCheckBox("original");
-    originalCb_->setToolTip("Show original photo (color/gray) instead of multi-canny gray");
-    originalCb_->setEnabled(false);
-    sourceCb_   = new QCheckBox("source");
-    outlineCb_  = new QCheckBox("outline");
-    blackCb_    = new QCheckBox("black");
-    hideDoneCb_ = new QCheckBox("hide done");
-    sourceCb_->setChecked(true);
-    outlineCb_->setChecked(true);
+
+    viewModeCb_ = new QComboBox();
+    viewModeCb_->setToolTip("View mode — press 1..7 or Tab to swap with previous");
+    // Order must match presets table in setViewMode().
+    viewModeCb_->addItem("Original");
+    viewModeCb_->addItem("Original + outline red");
+    viewModeCb_->addItem("Outline black");
+    viewModeCb_->addItem("Gray source");
+    viewModeCb_->addItem("Source (all black)");
+    viewModeCb_->addItem("Gray source + red outline");
+    viewModeCb_->addItem("Black source + red outline");
+    viewModeCb_->setCurrentIndex(viewMode_);
 
     top->addWidget(loTag);
     top->addWidget(loSpin_);
@@ -210,12 +214,9 @@ void CannyMainWindow::createUi()
     top->addWidget(lockCb_);
     top->addWidget(filterCb_);
     top->addWidget(filterOutlineCb_);
-    top->addWidget(originalCb_);
     top->addSpacing(12);
-    top->addWidget(sourceCb_);
-    top->addWidget(outlineCb_);
-    top->addWidget(blackCb_);
-    top->addWidget(hideDoneCb_);
+    top->addWidget(new QLabel("View:"));
+    top->addWidget(viewModeCb_);
 
     root->addLayout(top);
 
@@ -340,11 +341,21 @@ void CannyMainWindow::createUi()
     connect(lockCb_,    &QCheckBox::toggled,    this, &CannyMainWindow::onLockToggled);
     connect(filterCb_,  &QCheckBox::toggled,    this, &CannyMainWindow::onFilterToggled);
     connect(filterOutlineCb_, &QCheckBox::toggled, view_, &CannyViewWidget::setFilterOutline);
-    connect(originalCb_, &QCheckBox::toggled, view_, &CannyViewWidget::setShowOriginal);
-    connect(sourceCb_,   &QCheckBox::toggled, this, &CannyMainWindow::onSourceToggled);
-    connect(outlineCb_,  &QCheckBox::toggled, this, &CannyMainWindow::onOutlineToggled);
-    connect(blackCb_,    &QCheckBox::toggled, this, &CannyMainWindow::onBlackToggled);
-    connect(hideDoneCb_, &QCheckBox::toggled, this, &CannyMainWindow::onHideDoneToggled);
+    connect(viewModeCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &CannyMainWindow::setViewMode);
+
+    // Digit keys 1..7 pick a preset; Tab swaps with previous.
+    for (int i = 0; i < 7; ++i) {
+        auto* sc = new QShortcut(QKeySequence(Qt::Key_1 + i), this);
+        connect(sc, &QShortcut::activated, this, [this, i]{
+            viewModeCb_->setCurrentIndex(i);
+        });
+    }
+    auto* scTab = new QShortcut(QKeySequence(Qt::Key_Tab), this);
+    scTab->setContext(Qt::ApplicationShortcut);
+    connect(scTab, &QShortcut::activated, this, [this]{
+        viewModeCb_->setCurrentIndex(prevViewMode_);
+    });
 
     connect(aUndo_, &QAction::triggered, this, &CannyMainWindow::onUndo);
     connect(aRedo_, &QAction::triggered, this, &CannyMainWindow::onRedo);
@@ -507,8 +518,16 @@ bool CannyMainWindow::loadFile(const QString& path)
         }
     }
     view_->setOriginal(orig);
-    originalCb_->setEnabled(!orig.empty());
-    if (orig.empty()) originalCb_->setChecked(false);
+    hasOriginal_ = !orig.empty();
+    // Disable presets that need the original photo when it's missing.
+    if (auto* model = qobject_cast<QStandardItemModel*>(viewModeCb_->model())) {
+        for (int i : {0, 1}) {
+            if (auto* it = model->item(i)) it->setEnabled(hasOriginal_);
+        }
+    }
+    if (!hasOriginal_ && (viewMode_ == 0 || viewMode_ == 1)) {
+        viewModeCb_->setCurrentIndex(3);   // falls back to "Gray source"
+    }
 
     updateTitle();
     return true;
@@ -592,10 +611,44 @@ void CannyMainWindow::onSaveAs()
 }
 
 void CannyMainWindow::onFilterToggled(bool on)  { view_->setFilter(on); }
-void CannyMainWindow::onSourceToggled(bool on)  { view_->setShowSource(on); }
-void CannyMainWindow::onOutlineToggled(bool on) { view_->setShowOutline(on); }
-void CannyMainWindow::onBlackToggled(bool on)    { view_->setBlackMode(on); }
-void CannyMainWindow::onHideDoneToggled(bool on) { view_->setHideDone(on); }
+namespace {
+struct CannyModePreset {
+    bool original, source, outline, blackMode, hideDone;
+};
+// Indexed by viewMode_; order must match QComboBox items in createUi().
+constexpr CannyModePreset kCannyPresets[] = {
+    /* 0 Original                       */ {true,  false, false, false, false},
+    /* 1 Original + outline red         */ {true,  false, true,  false, false},
+    /* 2 Outline black                  */ {false, false, false, false, false},
+    /* 3 Gray source                    */ {false, true,  false, false, false},
+    /* 4 Source (all black)             */ {false, true,  false, true,  false},
+    /* 5 Gray source + red outline      */ {false, true,  true,  false, false},
+    /* 6 Black source + red outline     */ {false, true,  true,  true,  false},
+};
+constexpr int kCannyPresetCount = int(sizeof(kCannyPresets) / sizeof(kCannyPresets[0]));
+}
+
+void CannyMainWindow::setViewMode(int idx)
+{
+    if (idx < 0 || idx >= kCannyPresetCount || idx == viewMode_) return;
+    // Modes that depend on the original photo fall back to "Gray source"
+    // when no original is loaded.
+    if (!hasOriginal_ && (idx == 0 || idx == 1)) {
+        idx = 3;
+        if (viewModeCb_ && viewModeCb_->currentIndex() != idx) {
+            QSignalBlocker b(viewModeCb_);
+            viewModeCb_->setCurrentIndex(idx);
+        }
+    }
+    prevViewMode_ = viewMode_;
+    viewMode_ = idx;
+    const auto& p = kCannyPresets[idx];
+    view_->setShowOriginal(p.original);
+    view_->setShowSource(p.source);
+    view_->setShowOutline(p.outline);
+    view_->setBlackMode(p.blackMode);
+    view_->setHideDone(p.hideDone);
+}
 void CannyMainWindow::onMinSizeChanged(int v)   { view_->setMinSize(v); }
 void CannyMainWindow::onMinExtentChanged(int v) { view_->setMinExtent(double(v)); }
 void CannyMainWindow::onJoinTolChanged(int v)    { view_->setJoinTol(v); }
@@ -855,7 +908,7 @@ void CannyMainWindow::onFitToOthers()
 
     connect(appendCb, &QCheckBox::toggled, view_, &CannyViewWidget::setFitAppend);
     connect(showOrigCb, &QCheckBox::toggled, this, [this](bool on){
-        sourceCb_->setChecked(on);
+        view_->setShowSource(on);
     });
     connect(covSpin,  QOverload<int>::of(&QSpinBox::valueChanged),
             view_, &CannyViewWidget::setFitCoverage);
@@ -891,19 +944,19 @@ void CannyMainWindow::onFitToOthers()
     connect(okBtn, &QPushButton::clicked, this,
             [this, panel, wasShowingSource]() {
         view_->commitFitMode();
-        sourceCb_->setChecked(*wasShowingSource);
+        view_->setShowSource(*wasShowingSource);
         panel->setVisible(false);
     });
     connect(cancelBtn, &QPushButton::clicked, this,
             [this, panel, wasShowingSource]() {
         view_->exitFitMode();
-        sourceCb_->setChecked(*wasShowingSource);
+        view_->setShowSource(*wasShowingSource);
         panel->setVisible(false);
     });
 
     fitShowFn_ = [this, fileLbl, fileBtn, okBtn, showOrigCb, loadAndEnter, wasShowingSource]() {
-        *wasShowingSource = sourceCb_->isChecked();
-        sourceCb_->setChecked(showOrigCb->isChecked());
+        *wasShowingSource = view_->showSource();
+        view_->setShowSource(showOrigCb->isChecked());
         okBtn->setEnabled(false);
 
         QString autoPath;
