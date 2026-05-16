@@ -33,6 +33,7 @@
 #include <opencv2/imgcodecs.hpp>
 
 #include "OriginalLoader.h"
+#include "ProjectTimeDialog.h"
 #include "ViewPreset.h"
 
 OcMainWindow::OcMainWindow(QWidget* parent) : QMainWindow(parent)
@@ -120,6 +121,13 @@ void OcMainWindow::createUi()
     auto* mView = menuBar()->addMenu("&View");
     mView->addAction(aFit);
     mView->addAction(aOne);
+
+    auto* mTools = menuBar()->addMenu("&Tools");
+    auto* aProjTime = mTools->addAction("&Project time...");
+    connect(aProjTime, &QAction::triggered, this, [this]{
+        ProjectTimeDialog dlg(&tracker_, fileList_, this);
+        dlg.exec();
+    });
 
     fileLabel_ = new QLabel("(no project)");
     statusBar()->addWidget(fileLabel_);

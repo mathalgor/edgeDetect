@@ -297,9 +297,18 @@ mark a file as done.
 * "Activity" that counts: key presses, mouse-button presses, mouse wheel.
   Plain mouse moves do **not** count, so just resting the cursor over the
   window doesn't inflate the timer.
-* If you don't do anything for **60 seconds** the timer effectively
-  pauses — the gap up to that point still counts (it's a tolerance
-  window), but seconds beyond it are skipped until you act again.
+* Pause behavior: the counter optimistically keeps ticking up for up to
+  **60 seconds** after your last event. If you come back within that
+  window, the whole gap is counted as active time. If 60 s pass without
+  any event the displayed counter **snaps back** to the value it had at
+  the last event — the over-counted seconds are dropped, never saved —
+  and stays there until your next event resumes it.
+
+The **Tools → Project time...** dialog shows the total for the project,
+a per-file table (filename / time / done) and an estimated remaining
+time based on the average per-done-file divided across the not-yet-done
+files. The dialog folds the running gap into the committed totals before
+displaying, so what you see in the report matches the status bar.
 
 Both pieces of state are saved per project in
 `$XDG_CONFIG_HOME/edgeDetect/<appName>/projects/<projectStem>.<hash>.times.json`:

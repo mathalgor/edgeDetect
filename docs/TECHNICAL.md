@@ -127,10 +127,20 @@ so two projects with the same stem don't collide. Shape:
 
 Driven by `common::TimeTracker`. Activity comes from a main-window
 `eventFilter` that matches only `KeyPress` / `MouseButtonPress` / `Wheel`
-events — plain mouse moves never bump the activity stamp. A 1 s tick
-adds a second only when the last activity is within `idleSeconds` (60 by
-default) of "now". Persisted on a 60 s flush timer plus on file switch,
-project switch, and `closeEvent`.
+events — plain mouse moves never bump the activity stamp.
+
+Counting model: per file `Entry::seconds` is the **committed** total
+(idle gaps already excluded). A running gap = `now - lastActivity_` is
+displayed *optimistically* up to `idleSeconds`; on the next event,
+`commitNow()` folds the gap into `Entry::seconds` if it was within idle
+or drops it if it exceeded the window (the displayed counter then snaps
+back to the committed value). The 1 s tick mutates nothing — it just
+emits a derived live value via `liveSecondsFor()`. `commitNow()` is also
+called from `flush()`, the 60 s flush timer, and `setCurrentFile()`, so
+persisted state is always consistent.
+
+`common::ProjectTimeDialog` (Tools → Project time...) calls
+`commitNow()` before reading `snapshot()` for its report.
 
 ---
 

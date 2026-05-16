@@ -7,10 +7,12 @@ add_library(edgeDetectCommon STATIC
         CursorUtils.h
         OriginalLoader.cpp
         OriginalLoader.h
+        ProjectTimeDialog.cpp
+        ProjectTimeDialog.h
         TimeTracker.cpp
         TimeTracker.h
         ViewPreset.h
 )
 
-target_link_libraries(edgeDetectCommon PUBLIC Qt6::Core Qt6::Gui ${OpenCV_LIBS})
+target_link_libraries(edgeDetectCommon PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets ${OpenCV_LIBS})
 target_include_directories(edgeDetectCommon PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

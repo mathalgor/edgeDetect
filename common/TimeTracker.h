@@ -14,11 +14,16 @@ class QTimer;
 // filter that catches key presses, mouse button presses and mouse wheel —
 // NOT plain mouse moves.
 //
-// Counts seconds tick-based: every 1 s the tracker checks whether the last
-// activity was within `idleSeconds_` of "now"; if so, +1 s is added to the
-// current file. A long break (idleSeconds_+ without activity) is therefore
-// excluded automatically, with the idleSeconds_ window itself counted as a
-// tolerance buffer.
+// Counting model — "commit gap on event, revert on overflow":
+//   Per file, Entry::seconds is the committed total (idle gaps already
+//   excluded). A "running gap" — wall-clock since the last activity — is
+//   added to the display every 1 s for the current file, BUT only while
+//   the gap is within `idleSeconds_`. When the gap exceeds the idle
+//   threshold the display snaps back to the committed total: those
+//   over-counted seconds are dropped, never persisted.
+//   On the next activity, if the gap so far was within the idle window,
+//   it is committed (added to Entry::seconds) and the window resets; if
+//   the gap exceeded the window, it is dropped entirely.
 //
 // State (per file: accumulated seconds + done flag) persists to
 // $XDG_CONFIG_HOME/edgeDetect/<app>/projects/<stem>.<hash>.times.json.
@@ -44,10 +49,20 @@ public:
 
     void registerActivity();
 
-    qint64 secondsFor(const QString& name) const;
-    qint64 totalSeconds() const;
+    // Folds any in-flight valid gap into the current file's committed
+    // seconds and resets the running window. Call before reading the
+    // committed value for reporting (the report dialog does this).
+    void commitNow();
+
+    qint64 secondsFor(const QString& name) const;        // committed only
+    qint64 liveSecondsFor(const QString& name) const;    // committed + running
+    qint64 totalSeconds() const;                         // sum of committed
     bool   isDone(const QString& name) const;
     void   setDone(const QString& name, bool on);
+
+    // Read-only access for the report dialog.
+    struct FileStat { qint64 seconds = 0; bool done = false; };
+    QHash<QString, FileStat> snapshot() const;
 
     // Writes the JSON to disk. Called automatically by the periodic flush
     // timer and from setCurrentFile / bindToProject / destructor.

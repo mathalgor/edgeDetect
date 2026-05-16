@@ -63,6 +63,7 @@ void TimeTracker::bindToProject(const QString& projectAbsolutePath)
 void TimeTracker::setCurrentFile(const QString& name)
 {
     if (name == currentFile_) return;
+    commitNow();   // fold any in-flight gap into the file we're leaving
     flush();
     currentFile_ = name;
     // Don't auto-bump lastActivity_; require a real user event first so
@@ -74,13 +75,42 @@ void TimeTracker::setCurrentFile(const QString& name)
 
 void TimeTracker::registerActivity()
 {
+    // Fold the gap that just ended into the committed total (if valid),
+    // then anchor the running window to "now".
+    commitNow();
     lastActivity_ = QDateTime::currentDateTime();
+}
+
+void TimeTracker::commitNow()
+{
+    if (currentFile_.isEmpty() || !lastActivity_.isValid()) return;
+    const QDateTime now = QDateTime::currentDateTime();
+    const qint64 gapMs = lastActivity_.msecsTo(now);
+    if (gapMs >= 0 && gapMs <= qint64(idleSeconds_) * 1000) {
+        // Within idle window — commit the gap as active time. Round to
+        // nearest whole second so the display matches the saved value.
+        entries_[currentFile_].seconds += (gapMs + 500) / 1000;
+        dirty_ = true;
+    }
+    // Either way: anchor "now" so the next gap is measured from here.
+    lastActivity_ = now;
 }
 
 qint64 TimeTracker::secondsFor(const QString& name) const
 {
     auto it = entries_.find(name);
     return it == entries_.end() ? 0 : it.value().seconds;
+}
+
+qint64 TimeTracker::liveSecondsFor(const QString& name) const
+{
+    qint64 base = secondsFor(name);
+    if (name != currentFile_ || !lastActivity_.isValid()) return base;
+    const qint64 gapMs = lastActivity_.msecsTo(QDateTime::currentDateTime());
+    if (gapMs >= 0 && gapMs <= qint64(idleSeconds_) * 1000) {
+        base += gapMs / 1000;
+    }
+    return base;
 }
 
 qint64 TimeTracker::totalSeconds() const
@@ -90,6 +120,16 @@ qint64 TimeTracker::totalSeconds() const
         t += it.value().seconds;
     }
     return t;
+}
+
+QHash<QString, TimeTracker::FileStat> TimeTracker::snapshot() const
+{
+    QHash<QString, FileStat> out;
+    out.reserve(entries_.size());
+    for (auto it = entries_.begin(); it != entries_.end(); ++it) {
+        out.insert(it.key(), { it.value().seconds, it.value().done });
+    }
+    return out;
 }
 
 bool TimeTracker::isDone(const QString& name) const
@@ -110,19 +150,14 @@ void TimeTracker::setDone(const QString& name, bool on)
 
 void TimeTracker::onTick()
 {
-    if (currentFile_.isEmpty()) return;
-    if (lastActivity_.isValid()) {
-        const qint64 sinceMs = lastActivity_.msecsTo(QDateTime::currentDateTime());
-        if (sinceMs >= 0 && sinceMs < qint64(idleSeconds_) * 1000) {
-            entries_[currentFile_].seconds += 1;
-            dirty_ = true;
-        }
-    }
-    emit tick(currentFile_, secondsFor(currentFile_));
+    // The display value is purely derived: committed + a running window
+    // capped at idleSeconds_. Entries are only mutated in commitNow().
+    emit tick(currentFile_, liveSecondsFor(currentFile_));
 }
 
 void TimeTracker::onFlushTimer()
 {
+    commitNow();    // fold in-flight gap before persisting
     if (dirty_) flush();
 }
 
@@ -168,6 +203,7 @@ void TimeTracker::save()
 
 void TimeTracker::flush()
 {
+    commitNow();    // ensure persisted state reflects the in-flight gap
     if (!dirty_) return;
     save();
     dirty_ = false;

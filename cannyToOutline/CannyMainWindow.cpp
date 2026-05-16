@@ -1,6 +1,7 @@
 #include "CannyMainWindow.h"
 #include "CannyViewWidget.h"
 #include "ProjectDialog.h"
+#include "ProjectTimeDialog.h"
 
 #include <QAction>
 #include <QApplication>
@@ -345,6 +346,12 @@ void CannyMainWindow::createUi()
     auto* aThrTool = mTools->addAction("Threshold add/remove...");
     aThrTool->setShortcut(QKeySequence(Qt::Key_F5));
     connect(aThrTool, &QAction::triggered, this, &CannyMainWindow::onThresholdTool);
+    mTools->addSeparator();
+    auto* aProjTime = mTools->addAction("&Project time...");
+    connect(aProjTime, &QAction::triggered, this, [this]{
+        ProjectTimeDialog dlg(&tracker_, fileList_, this);
+        dlg.exec();
+    });
 
     // --- status ---
     fileLabel_ = new QLabel("(no project)");
