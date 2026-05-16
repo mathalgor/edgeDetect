@@ -1622,9 +1622,23 @@ void CannyViewWidget::floodSelectSameValue(const cv::Point& seed, int joinTol, b
 void CannyViewWidget::updateCursorForMods(Qt::KeyboardModifiers m)
 {
     if (panning_) { setCursor(Qt::ClosedHandCursor); return; }
+    if (!editEnabled_) { setCursor(Qt::OpenHandCursor); return; }
     if (m & Qt::ControlModifier) setCursor(makePickCursor());
     else if (m & Qt::ShiftModifier) setCursor(Qt::CrossCursor);
     else setCursor(Qt::OpenHandCursor);
+}
+
+void CannyViewWidget::setEditEnabled(bool on)
+{
+    if (editEnabled_ == on) return;
+    editEnabled_ = on;
+    if (!on) {
+        // Cancel any in-progress selections so a later re-enable starts clean.
+        cancelStrip();
+        cancelRectSelection();
+    }
+    updateCursorForMods(Qt::NoModifier);
+    update();
 }
 
 void CannyViewWidget::wheelEvent(QWheelEvent* e)
@@ -1705,7 +1719,9 @@ void CannyViewWidget::mousePressEvent(QMouseEvent* e)
     if (thresholdMode_) {
         // without modifier — cancel strip in progress (right click caught above)
     }
-    if (mods & (Qt::ControlModifier | Qt::ShiftModifier)) {
+    if ((mods & (Qt::ControlModifier | Qt::ShiftModifier)) && !editEnabled_) {
+        // Editing disabled in this view mode — fall through to panning.
+    } else if (mods & (Qt::ControlModifier | Qt::ShiftModifier)) {
         if (src_.empty()) return;
         const QPointF ip = widgetToImage(e->pos());
         const int ix = int(std::floor(ip.x())), iy = int(std::floor(ip.y()));

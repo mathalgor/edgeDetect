@@ -648,6 +648,9 @@ void CannyMainWindow::setViewMode(int idx)
     view_->setShowOutline(p.outline);
     view_->setBlackMode(p.blackMode);
     view_->setHideDone(p.hideDone);
+    // Edits (Ctrl-click, Shift-drag/strip) only make sense when both the gray
+    // source and the user's outline are visible — presets 5 & 6.
+    view_->setEditEnabled(p.source && p.outline);
 }
 void CannyMainWindow::onMinSizeChanged(int v)   { view_->setMinSize(v); }
 void CannyMainWindow::onMinExtentChanged(int v) { view_->setMinExtent(double(v)); }

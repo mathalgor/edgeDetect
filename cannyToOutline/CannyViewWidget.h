@@ -27,6 +27,10 @@ public:
     void setBlackMode(bool on);
     void setHideDone(bool on);
     bool showSource() const { return showSource_; }
+    // When false, Ctrl-click and Shift-drag/strip edits are ignored.
+    // The view still pans and zooms normally.
+    void setEditEnabled(bool on);
+    bool editEnabled() const { return editEnabled_; }
     void setMinSize(int n);                  // 0 = disabled
     void setMinExtent(double d);             // 0 = disabled
     void setJoinTol(int tol);                // widens flood-fill by ±tol
@@ -146,6 +150,7 @@ private:
     bool showOutline_ = true;
     bool blackMode_   = false;
     bool hideDone_    = false;
+    bool editEnabled_ = true;
 
     cv::Mat labels_;            // CV_32S, 0 = background, same-value 8-conn labels
     std::vector<int> labelSize_;// component size by label index
