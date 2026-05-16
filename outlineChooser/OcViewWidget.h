@@ -87,8 +87,11 @@ private:
     void rebuildVisualization();        // rebuild the entire vis_
     void updateVisualizationAt(const std::vector<cv::Point>& pts);
     void updateCursorForMods(Qt::KeyboardModifiers m);
-    // Nearest non-white pixel within radius (image pixels). Returns (-1,-1) if none.
-    cv::Point pickClosestNear(int cx, int cy, int radius) const;
+    // Nearest "seedable" pixel within radius (image pixels). A pixel counts
+    // as seedable if it is in outline 1 or outline 2; if includeGray is
+    // true, gray-edge pixels (src<255) also count. Returns (-1,-1) if none.
+    cv::Point pickClosestNear(int cx, int cy, int radius,
+                              bool includeGray = false) const;
 
     int  colorAt(int x, int y) const;   // 0=white,1=green,2=red,3=yellow,4=black
     int  cellAt(int x, int y) const;    // 0..7 = (in1<<2)|(in2<<1)|out

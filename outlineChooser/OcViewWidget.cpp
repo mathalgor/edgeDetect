@@ -395,11 +395,16 @@ void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
     int ix = int(std::floor(ip.x())), iy = int(std::floor(ip.y()));
     if (ix < 0 || iy < 0 || ix >= src_.cols || iy >= src_.rows) return;
 
-    // Ctrl: if click landed on white background, search the nearest non-white
-    // pixel within a radius of 8 widget pixels (in image pixels at current zoom).
+    // Ctrl: if click landed on white background, search the nearest seedable
+    // pixel within a radius of 8 widget pixels (in image pixels at current
+    // zoom). In a GraySource preset, gray-edge pixels (src<255) also count
+    // as candidates — so a Ctrl click near a gray edge can snap to it for
+    // the gray-edit branch instead of jumping to a stray outline pixel.
     if ((e->modifiers() & Qt::ControlModifier) && colorAt(ix, iy) == 0) {
+        const bool includeGray =
+            (preset.bg == ViewPreset::Background::GraySource);
         const int r = std::max(1, int(std::round(8.0 / std::max(scale_, 0.01))));
-        const cv::Point near = pickClosestNear(ix, iy, r);
+        const cv::Point near = pickClosestNear(ix, iy, r, includeGray);
         if (near.x < 0) return;
         ix = near.x; iy = near.y;
     }
@@ -498,7 +503,8 @@ void OcViewWidget::updateCursorForMods(Qt::KeyboardModifiers m)
     else setCursor(Qt::ArrowCursor);
 }
 
-cv::Point OcViewWidget::pickClosestNear(int cx, int cy, int radius) const
+cv::Point OcViewWidget::pickClosestNear(int cx, int cy, int radius,
+                                        bool includeGray) const
 {
     if (src_.empty()) return {-1, -1};
     const int y0 = std::max(0, cy - radius), y1 = std::min(src_.rows - 1, cy + radius);
@@ -509,8 +515,11 @@ cv::Point OcViewWidget::pickClosestNear(int cx, int cy, int radius) const
     for (int y = y0; y <= y1; ++y) {
         const uchar* o1 = o1_.ptr<uchar>(y);
         const uchar* o2 = o2_.ptr<uchar>(y);
+        const uchar* s  = src_.ptr<uchar>(y);
         for (int x = x0; x <= x1; ++x) {
-            if (!o1[x] && !o2[x]) continue;     // white — no candidate color here
+            bool match = o1[x] || o2[x];
+            if (!match && includeGray) match = (s[x] < 255);
+            if (!match) continue;
             const int d2 = (x - cx)*(x - cx) + (y - cy)*(y - cy);
             if (d2 > r2) continue;
             if (d2 < bestD2) { bestD2 = d2; r = cv::Point(x, y); }
