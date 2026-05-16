@@ -90,6 +90,10 @@ void OcMainWindow::createUi()
     auto* aOpenProj = mFile->addAction("&Open project...");
     recentMenu_ = mFile->addMenu("&Recent projects");
     auto* aSetProj = mFile->addAction("&Set project dirs...");
+    mFile->addSeparator();
+    auto* aSave = mFile->addAction("&Save");
+    aSave->setShortcut(QKeySequence::Save);
+    mFile->addSeparator();
     mFile->addAction(aPrev_);
     mFile->addAction(aNext_);
     mFile->addSeparator();
@@ -108,6 +112,7 @@ void OcMainWindow::createUi()
     connect(aNewProj,  &QAction::triggered, this, &OcMainWindow::onNewProject);
     connect(aOpenProj, &QAction::triggered, this, &OcMainWindow::onOpenProject);
     connect(aSetProj,  &QAction::triggered, this, &OcMainWindow::onSetProject);
+    connect(aSave,     &QAction::triggered, this, &OcMainWindow::onSave);
     connect(aQuit,     &QAction::triggered, this, &QMainWindow::close);
     connect(aPrev_,    &QAction::triggered, this, &OcMainWindow::onPrevFile);
     connect(aNext_,    &QAction::triggered, this, &OcMainWindow::onNextFile);
@@ -121,10 +126,7 @@ void OcMainWindow::createUi()
         const int idx = v - 1;
         if (idx < 0 || idx >= fileList_.size()) return;
         if (idx == fileIndex_) return;
-        if (view_->dirty() && !maybeSave()) {
-            guard_ = true; fileSpin_->setValue(fileIndex_ + 1); guard_ = false;
-            return;
-        }
+        autoSaveIfPossible();
         loadProjectIndex(idx);
     });
 
@@ -296,7 +298,7 @@ static cv::Mat readGray(const QString& path)
 bool OcMainWindow::loadProjectIndex(int idx)
 {
     if (idx < 0 || idx >= fileList_.size()) return false;
-    if (view_->dirty() && !maybeSave()) return false;
+    autoSaveIfPossible();
     const QString name = fileList_[idx];
     const QString src = QDir(project_.sourceDir).filePath(name);
     cv::Mat g = readGray(src);
@@ -338,15 +340,32 @@ bool OcMainWindow::doSave()
     return ok;
 }
 
-bool OcMainWindow::maybeSave()
+void OcMainWindow::autoSaveIfPossible()
 {
-    if (!view_->dirty()) return true;
-    const auto r = QMessageBox::question(this, "outlineChooser",
-        "Save changes to the resulting outline?",
-        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
-    if (r == QMessageBox::Cancel) return false;
-    if (r == QMessageBox::Discard) { view_->markSaved(); return true; }
-    return doSave();
+    if (!view_->dirty()) return;
+    if (project_.outputDir.isEmpty()) {
+        statusBar()->showMessage(
+            "No output dir set — changes not saved. Set project dirs.", 5000);
+        return;
+    }
+    if (!doSave()) {
+        statusBar()->showMessage("Auto-save failed.", 5000);
+    }
+}
+
+void OcMainWindow::onSave()
+{
+    if (!view_->dirty()) {
+        statusBar()->showMessage("Nothing to save.", 2000);
+        return;
+    }
+    if (project_.outputDir.isEmpty()) {
+        QMessageBox::warning(this, "Save",
+            "No output directory configured — open File → Set project dirs...");
+        return;
+    }
+    if (doSave()) statusBar()->showMessage("Saved.", 2000);
+    else QMessageBox::warning(this, "Save", "Save failed.");
 }
 
 void OcMainWindow::onPrevFile()
@@ -399,7 +418,7 @@ void OcMainWindow::updateTitle()
 
 void OcMainWindow::closeEvent(QCloseEvent* e)
 {
-    if (!maybeSave()) { e->ignore(); return; }
+    autoSaveIfPossible();
     appConfig_.save();
     QMainWindow::closeEvent(e);
 }

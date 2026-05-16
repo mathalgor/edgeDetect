@@ -297,6 +297,11 @@ void CannyMainWindow::createUi()
     auto* aOpenProj = mFile->addAction("&Open project...");
     recentMenu_ = mFile->addMenu("&Recent projects");
     auto* aSetProj  = mFile->addAction("&Set project dirs...");
+    mFile->addSeparator();
+    auto* aSave = mFile->addAction("&Save");
+    aSave->setShortcut(QKeySequence::Save);
+    auto* aSaveAs = mFile->addAction("Save &as...");
+    mFile->addSeparator();
     mFile->addAction(aPrev_);
     mFile->addAction(aNext_);
     mFile->addSeparator();
@@ -304,6 +309,8 @@ void CannyMainWindow::createUi()
     aQuit->setShortcut(QKeySequence::Quit);
     connect(aNewProj,  &QAction::triggered, this, &CannyMainWindow::onNewProject);
     connect(aOpenProj, &QAction::triggered, this, &CannyMainWindow::onOpenProject);
+    connect(aSave,     &QAction::triggered, this, &CannyMainWindow::onSave);
+    connect(aSaveAs,   &QAction::triggered, this, &CannyMainWindow::onSaveAs);
 
     auto* mEdit = menuBar()->addMenu("&Edit");
     mEdit->addAction(aUndo_);
@@ -425,8 +432,8 @@ void CannyMainWindow::onOpen()
 
 void CannyMainWindow::closeEvent(QCloseEvent* e)
 {
-    if (maybeSave()) e->accept();
-    else e->ignore();
+    if (dirty_) doSave();   // silent auto-save; no prompt
+    e->accept();
 }
 
 bool CannyMainWindow::maybeSave()

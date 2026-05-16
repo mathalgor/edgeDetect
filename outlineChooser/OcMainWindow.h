@@ -28,6 +28,7 @@ private slots:
     void onNewProject();
     void onOpenProject();
     void onSetProject();
+    void onSave();
     void onPrevFile();
     void onNextFile();
     void onFit();
@@ -44,7 +45,10 @@ private:
     void scanProject();
     bool loadProjectIndex(int idx);
     bool doSave();
-    bool maybeSave();
+    // Save without prompting when the user just navigates or closes the
+    // window. If the project has no outputDir yet, this is a no-op (we
+    // can't write anywhere). The dirty flag is cleared on success.
+    void autoSaveIfPossible();
     void updateFileLabel();
     void updateTitle();
 
