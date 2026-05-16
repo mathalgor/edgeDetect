@@ -61,8 +61,198 @@ void OcViewWidget::setData(const cv::Mat& srcGray,
     dirty_ = false;
     emit dirtyChanged(false);
     pendingFit_ = true;
+    analyzeComponents();
     rebuildVisualization();
     if (width() > 0 && height() > 0) fitToWindow();
+    update();
+}
+
+void OcViewWidget::analyzeComponents()
+{
+    labels_.release();
+    labelSize_.clear();
+    labelValue_.clear();
+    if (src_.empty()) return;
+
+    const int rows = src_.rows, cols = src_.cols;
+    labels_ = cv::Mat::zeros(src_.size(), CV_32S);
+    cv::Mat visited = cv::Mat::zeros(src_.size(), CV_8UC1);
+    labelSize_.push_back(0);    // [0] = background
+    labelValue_.push_back(255); // sentinel
+
+    static constexpr int dx8[8] = {-1, 0, 1, -1, 1, -1, 0, 1};
+    static constexpr int dy8[8] = {-1,-1,-1,  0, 0,  1, 1, 1};
+    static constexpr int dx4[4] = { 0, -1, 1, 0};
+    static constexpr int dy4[4] = {-1,  0, 0, 1};
+    const int nNb = conn8_ ? 8 : 4;
+    const int* dxN = conn8_ ? dx8 : dx4;
+    const int* dyN = conn8_ ? dy8 : dy4;
+
+    std::vector<cv::Point> comp, stack;
+    int nextLabel = 1;
+    for (int y0 = 0; y0 < rows; ++y0) {
+        const uchar* srcRow = src_.ptr<uchar>(y0);
+        const uchar* visRow = visited.ptr<uchar>(y0);
+        for (int x0 = 0; x0 < cols; ++x0) {
+            if (visRow[x0]) continue;
+            const uchar target = srcRow[x0];
+            if (target >= 255) continue;
+            comp.clear();
+            stack.clear();
+            stack.emplace_back(x0, y0);
+            visited.at<uchar>(y0, x0) = 1;
+            while (!stack.empty()) {
+                const cv::Point p = stack.back();
+                stack.pop_back();
+                comp.push_back(p);
+                for (int k = 0; k < nNb; ++k) {
+                    const int nx = p.x + dxN[k], ny = p.y + dyN[k];
+                    if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+                    if (visited.at<uchar>(ny, nx)) continue;
+                    if (src_.at<uchar>(ny, nx) != target) continue;
+                    visited.at<uchar>(ny, nx) = 1;
+                    stack.emplace_back(nx, ny);
+                }
+            }
+            const int L = nextLabel++;
+            labelSize_.push_back(int(comp.size()));
+            labelValue_.push_back(target);
+            for (const auto& q : comp) labels_.at<int>(q) = L;
+        }
+    }
+}
+
+bool OcViewWidget::grayCandidateAvailable() const
+{
+    if (!allowGrayEdit_) return false;
+    if (presetIndex_ < 0 || presetIndex_ >= int(presets_.size())) return false;
+    return presets_[presetIndex_].bg == ViewPreset::Background::GraySource;
+}
+
+std::vector<cv::Point> OcViewWidget::stripCorners(
+        const QPoint& p1, const QPoint& p2, const QPoint& cursor) const
+{
+    const double ax = p2.x() - p1.x();
+    const double ay = p2.y() - p1.y();
+    const double len = std::hypot(ax, ay);
+    std::vector<cv::Point> out;
+    if (len < 1e-6) return out;
+    const double ux = ax / len, uy = ay / len;
+    const double px = -uy,      py = ux;
+    const double cx = cursor.x() - p1.x();
+    const double cy = cursor.y() - p1.y();
+    const double u  = cx * px + cy * py;
+    const double wx = px * u, wy = py * u;
+    out.reserve(4);
+    out.emplace_back(p1.x(), p1.y());
+    out.emplace_back(p2.x(), p2.y());
+    out.emplace_back(int(std::round(p2.x() + wx)), int(std::round(p2.y() + wy)));
+    out.emplace_back(int(std::round(p1.x() + wx)), int(std::round(p1.y() + wy)));
+    return out;
+}
+
+void OcViewWidget::finishRectFromCurrent()
+{
+    if (src_.empty()) return;
+    const int x0 = std::max(0, std::min(rectStart_.x(), rectEnd_.x()));
+    const int y0 = std::max(0, std::min(rectStart_.y(), rectEnd_.y()));
+    const int x1 = std::min(src_.cols - 1, std::max(rectStart_.x(), rectEnd_.x()));
+    const int y1 = std::min(src_.rows - 1, std::max(rectStart_.y(), rectEnd_.y()));
+    if (x1 < x0 || y1 < y0) return;
+    lastPolyMask_ = cv::Mat::zeros(src_.size(), CV_8UC1);
+    cv::rectangle(lastPolyMask_, cv::Point(x0, y0), cv::Point(x1, y1),
+                  cv::Scalar(255), cv::FILLED);
+    rectDragging_ = false;
+    update();
+    emit rectSelectionFinished();
+}
+
+void OcViewWidget::finishStrip(const QPoint& widthRef)
+{
+    if (src_.empty()) return;
+    const auto corners = stripCorners(stripP1_, stripP2_, widthRef);
+    stripPhase_ = StripPhase::None;
+    if (corners.size() != 4) { update(); return; }
+    lastPolyMask_ = cv::Mat::zeros(src_.size(), CV_8UC1);
+    std::vector<std::vector<cv::Point>> polys{corners};
+    cv::fillPoly(lastPolyMask_, polys, cv::Scalar(255));
+    update();
+    emit rectSelectionFinished();
+}
+
+void OcViewWidget::cancelStripInProgress()
+{
+    stripPhase_ = StripPhase::None;
+    update();
+}
+
+void OcViewWidget::cancelRectSelection()
+{
+    lastPolyMask_.release();
+    rectDragging_ = false;
+    stripPhase_ = StripPhase::None;
+    update();
+}
+
+void OcViewWidget::commitRectSelection(int threshold, CandMode mode, CandColor color)
+{
+    if (lastPolyMask_.empty() || labels_.empty() || src_.empty()) {
+        cancelRectSelection();
+        return;
+    }
+    const int rows = src_.rows, cols = src_.cols;
+
+    // Count how many pixels of each label fall inside the polygon.
+    std::vector<int> countIn(labelSize_.size(), 0);
+    for (int y = 0; y < rows; ++y) {
+        const uchar* pm = lastPolyMask_.ptr<uchar>(y);
+        const int*   lr = labels_.ptr<int>(y);
+        for (int x = 0; x < cols; ++x) {
+            if (!pm[x]) continue;
+            const int L = lr[x];
+            if (L > 0 && L < int(countIn.size())) ++countIn[L];
+        }
+    }
+    // Select labels by spatial mode + value threshold.
+    std::vector<uchar> include(labelSize_.size(), 0);
+    for (int L = 1; L < int(labelSize_.size()); ++L) {
+        if (countIn[L] == 0) continue;
+        if (mode == CandMode::Touching) {
+            // touching = any pixel in the polygon
+        } else {
+            if (countIn[L] != labelSize_[L]) continue;
+        }
+        if (labelValue_[L] > threshold) continue;
+        include[L] = 1;
+    }
+    // Walk pixels of included labels, filter by color, add to out_.
+    std::vector<cv::Point> changed;
+    for (int y = 0; y < rows; ++y) {
+        const int*   lr = labels_.ptr<int>(y);
+        const uchar* o1 = o1_.ptr<uchar>(y);
+        const uchar* o2 = o2_.ptr<uchar>(y);
+        uchar*       oo = out_.ptr<uchar>(y);
+        for (int x = 0; x < cols; ++x) {
+            const int L = lr[x];
+            if (L <= 0 || !include[L]) continue;
+            if (oo[x]) continue;       // already in result
+            bool match = false;
+            switch (color) {
+                case CandColor::Red:   match =  o2[x] && !o1[x]; break;
+                case CandColor::Green: match =  o1[x] && !o2[x]; break;
+                case CandColor::Gray:  match = !o1[x] && !o2[x]; break;
+            }
+            if (!match) continue;
+            oo[x] = 255;
+            changed.emplace_back(x, y);
+        }
+    }
+    lastPolyMask_.release();
+    if (!changed.empty()) {
+        updateVisualizationAt(changed);
+        if (!dirty_) { dirty_ = true; emit dirtyChanged(true); }
+        emit editOp(changed, /*add=*/true);
+    }
     update();
 }
 
@@ -293,6 +483,61 @@ void OcViewWidget::paintEvent(QPaintEvent*)
                vis_.width() * scale_, vis_.height() * scale_);
     p.setRenderHint(QPainter::SmoothPixmapTransform, !panning_ && scale_ < 1.0);
     p.drawImage(dst, vis_);
+
+    // Rubber-band rect (during drag).
+    if (rectDragging_) {
+        const QPointF a = imageToWidget(QPointF(rectStart_.x(), rectStart_.y()));
+        const QPointF b = imageToWidget(QPointF(rectEnd_.x() + 1, rectEnd_.y() + 1));
+        QRectF r(a, b);
+        p.setPen(QPen(QColor(255, 220, 0, 220), 1, Qt::DashLine));
+        p.setBrush(QColor(255, 220, 0, 40));
+        p.drawRect(r.normalized());
+    }
+    // Oriented strip (P1 set / P2 set).
+    if (stripPhase_ == StripPhase::P1Set || stripPhase_ == StripPhase::P2Set) {
+        const QPointF a = imageToWidget(QPointF(stripP1_.x() + 0.5, stripP1_.y() + 0.5));
+        const QPointF b = (stripPhase_ == StripPhase::P1Set)
+            ? imageToWidget(QPointF(stripCursor_.x() + 0.5, stripCursor_.y() + 0.5))
+            : imageToWidget(QPointF(stripP2_.x() + 0.5, stripP2_.y() + 0.5));
+        p.setPen(QPen(QColor(255, 220, 0, 220), 1, Qt::DashLine));
+        p.drawLine(a, b);
+        if (stripPhase_ == StripPhase::P2Set) {
+            const auto corners = stripCorners(stripP1_, stripP2_, stripCursor_);
+            if (corners.size() == 4) {
+                QPolygonF poly;
+                for (const auto& c : corners) {
+                    poly << imageToWidget(QPointF(c.x + 0.5, c.y + 0.5));
+                }
+                p.setBrush(QColor(255, 220, 0, 40));
+                p.drawPolygon(poly);
+            }
+        }
+    }
+    // Pending (already finalized) polygon outline.
+    if (!lastPolyMask_.empty() && !rectDragging_ && stripPhase_ == StripPhase::None) {
+        // Cheap visualization: just outline its bounding rect.
+        cv::Rect bb;
+        // Compute bounding box of non-zero pixels.
+        int x0 = lastPolyMask_.cols, y0 = lastPolyMask_.rows, x1 = -1, y1 = -1;
+        for (int y = 0; y < lastPolyMask_.rows; ++y) {
+            const uchar* m = lastPolyMask_.ptr<uchar>(y);
+            for (int x = 0; x < lastPolyMask_.cols; ++x) {
+                if (!m[x]) continue;
+                if (x < x0) x0 = x;
+                if (y < y0) y0 = y;
+                if (x > x1) x1 = x;
+                if (y > y1) y1 = y;
+            }
+        }
+        if (x1 >= x0 && y1 >= y0) {
+            const QPointF a = imageToWidget(QPointF(x0, y0));
+            const QPointF b = imageToWidget(QPointF(x1 + 1, y1 + 1));
+            QRectF r(a, b);
+            p.setPen(QPen(QColor(0, 200, 255, 220), 1, Qt::DashLine));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(r.normalized());
+        }
+    }
 }
 
 void OcViewWidget::resizeEvent(QResizeEvent*)
@@ -357,8 +602,50 @@ void OcViewWidget::zoomOneToOne()
 void OcViewWidget::mousePressEvent(QMouseEvent* e)
 {
     setFocus();
+
+    // Right-click cancels an in-progress strip / pending rect.
+    if (e->button() == Qt::RightButton) {
+        if (stripPhase_ != StripPhase::None) { cancelStripInProgress(); return; }
+        if (!lastPolyMask_.empty()) { cancelRectSelection(); return; }
+    }
     if (e->button() != Qt::LeftButton) return;
     if (vis_.isNull()) return;
+
+    const auto mods = e->modifiers();
+    const QPointF ip = widgetToImage(e->pos());
+    const int ix = int(std::floor(ip.x())), iy = int(std::floor(ip.y()));
+
+    // Mid-strip clicks always advance phase, even without Shift.
+    if (stripPhase_ == StripPhase::P1Set || stripPhase_ == StripPhase::P2Set) {
+        if (ix < 0 || iy < 0 || ix >= src_.cols || iy >= src_.rows) return;
+        if (stripPhase_ == StripPhase::P1Set) {
+            stripP2_ = QPoint(ix, iy);
+            stripCursor_ = stripP2_;
+            stripPhase_ = StripPhase::P2Set;
+            update();
+        } else {
+            finishStrip(QPoint(ix, iy));
+        }
+        return;
+    }
+
+    // Shift starts a tentative rect/strip selection (only when editable).
+    if (mods & Qt::ShiftModifier) {
+        const ViewPreset& preset = presets_[presetIndex_];
+        if (!preset.isEditable()) return;
+        if (ix < 0 || iy < 0 || ix >= src_.cols || iy >= src_.rows) return;
+        cancelRectSelection();
+        stripPhase_ = StripPhase::Tentative;
+        stripP1_ = QPoint(ix, iy);
+        stripCursor_ = stripP1_;
+        stripPressWidget_ = e->pos();
+        rectStart_ = QPoint(ix, iy);
+        rectEnd_ = rectStart_;
+        rectDragging_ = false;
+        update();
+        return;
+    }
+
     panning_ = true;
     lastMousePos_ = e->pos();
     pressPos_ = e->pos();
@@ -373,6 +660,25 @@ void OcViewWidget::mouseMoveEvent(QMouseEvent* e)
         panOffset_ += QPointF(d);
         lastMousePos_ = e->pos();
         update();
+        emitHud(e->pos());
+        return;
+    }
+    // Tentative phase: > 4 widget pixels of drag flips us into rect-drag.
+    if (stripPhase_ == StripPhase::Tentative) {
+        const QPoint d = e->pos() - stripPressWidget_;
+        if (d.x()*d.x() + d.y()*d.y() > 16) {
+            rectDragging_ = true;
+            stripPhase_ = StripPhase::None;
+        }
+    }
+    if (rectDragging_) {
+        const QPointF ip = widgetToImage(e->pos());
+        rectEnd_ = QPoint(int(std::floor(ip.x())), int(std::floor(ip.y())));
+        update();
+    } else if (stripPhase_ == StripPhase::P1Set || stripPhase_ == StripPhase::P2Set) {
+        const QPointF ip = widgetToImage(e->pos());
+        stripCursor_ = QPoint(int(std::floor(ip.x())), int(std::floor(ip.y())));
+        update();
     } else {
         updateCursorForMods(e->modifiers());
     }
@@ -382,6 +688,20 @@ void OcViewWidget::mouseMoveEvent(QMouseEvent* e)
 void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
 {
     if (e->button() != Qt::LeftButton) return;
+
+    // Finish a rect drag.
+    if (rectDragging_) {
+        rectDragging_ = false;
+        finishRectFromCurrent();
+        return;
+    }
+    // Tentative with no drag = first click of an oriented strip.
+    if (stripPhase_ == StripPhase::Tentative) {
+        stripPhase_ = StripPhase::P1Set;
+        update();
+        return;
+    }
+
     panning_ = false;
     updateCursorForMods(e->modifiers());
     // click without movement (>3 px = pan)
@@ -491,6 +811,10 @@ void OcViewWidget::applyOp(const std::vector<cv::Point>& pts, bool add)
 void OcViewWidget::keyPressEvent(QKeyEvent* e)
 {
     if (e->key() == Qt::Key_Control) updateCursorForMods(e->modifiers() | Qt::ControlModifier);
+    if (e->key() == Qt::Key_Escape) {
+        if (stripPhase_ != StripPhase::None) { cancelStripInProgress(); return; }
+        if (!lastPolyMask_.empty()) { cancelRectSelection(); return; }
+    }
     QWidget::keyPressEvent(e);
 }
 

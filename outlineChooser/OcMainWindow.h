@@ -16,6 +16,7 @@
 class QAction;
 class QCheckBox;
 class QComboBox;
+class QDialog;
 class QLabel;
 class QMenu;
 class QPushButton;
@@ -47,6 +48,7 @@ private slots:
     void onUndo();
     void onRedo();
     void onGrayEditRequested(int x, int y);
+    void onRectSelectionFinished();
 
 private:
     void createUi();
@@ -72,6 +74,10 @@ private:
     QAction* aUndo_ = nullptr;
     QAction* aRedo_ = nullptr;
     QAction* aAllowGrayEdit_ = nullptr;
+    QDialog* rectDialog_ = nullptr;
+    int  lastRectThreshold_ = 240;
+    int  lastCandidateMode_ = 0;   // 0=Touching, 1=Inside
+    int  lastCandidateColor_ = 0;  // 0=Red, 1=Green, 2=Gray
     QSpinBox* fileSpin_ = nullptr;
     QCheckBox* conn8Cb_ = nullptr;
     QComboBox* presetCb_ = nullptr;

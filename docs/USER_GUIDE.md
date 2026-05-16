@@ -276,6 +276,29 @@ gray-source preset, gray edges (`src<255`) also count as seedable, so the
 tolerance ring can snap to a gray edge for the advanced "click on gray"
 edit.
 
+#### Shift selection — rect and oriented strip
+
+For bulk-adding multiple segments at once:
+
+* **Shift + drag** draws an axis-aligned rectangle (rubber-band yellow).
+* **Shift + click** three times draws an oriented strip — click P1, click
+  P2 (defines the axis), then click a third point whose perpendicular
+  distance from the axis sets the strip width.
+* **Right-click** or **Esc** during the gesture cancels.
+
+On release, a small floating dialog (stays on top, non-modal) asks for:
+
+* **Threshold** — only components whose source gray value is ≤ threshold
+  are eligible. 255 means "any component", lower values restrict to
+  stronger edges.
+* **Spatial** — *Touching* (any pixel of the component inside the
+  polygon) or *Inside* (component fully inside).
+* **Add color** — *Red* (only-outline-2 pixels), *Green* (only-outline-1),
+  or *Gray* (no outline at all; only shown when **Allow click on gray**
+  is enabled and the active preset has a gray-source background).
+
+OK applies; Cancel discards. The commit is one undo step.
+
 The **8-conn** toolbar checkbox toggles between 4- and 8-connected
 flood-fill.
 

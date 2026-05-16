@@ -569,6 +569,25 @@ dialog (Yes = Enter, Cancel = Esc); on Yes it sets the checkable
 `view_->performGrayEditAt(x, y)` to actually carry out the edit. The
 flag is session-only; reopening the app re-asks on first gray click.
 
+#### Shift rect / oriented strip
+
+`analyzeComponents()` (run in `setData`) builds `labels_`/`labelSize_`/
+`labelValue_` — same-value 8/4-connected components over `src_`,
+skipping `v >= 255`. Shift-drag draws an axis-aligned rectangle;
+Shift-click ×3 draws an oriented strip (P1, P2, width-reference). On
+release `finishRectFromCurrent()` / `finishStrip()` rasterise the
+polygon into `lastPolyMask_` and emit `rectSelectionFinished()`.
+`OcMainWindow::onRectSelectionFinished()` shows a non-modal,
+`Qt::Tool | Qt::WindowStaysOnTopHint` floating dialog with a threshold
+spinbox, a Touching/Inside combo, and a colour combo (Red / Green /
+Gray; Gray is only added when `view_->grayCandidateAvailable()` is
+true). Accept calls `view_->commitRectSelection(threshold, mode,
+color)`; Cancel calls `cancelRectSelection()`. The commit walks
+`labels_` against `lastPolyMask_` to pick eligible labels (per Touching
+/ Inside + `labelValue_ ≤ threshold`), then sets matching-colour pixels
+in `out_` and emits one `editOp(changed, true)` so undo treats the
+whole bulk as one step.
+
 ### 4.7 Save
 
 `outputFileFmt()` returns `cv::bitwise_not(out_)` — back to the standard

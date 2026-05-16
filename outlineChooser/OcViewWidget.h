@@ -56,6 +56,20 @@ public:
     // after the user confirms the enabling dialog.
     void performGrayEditAt(int x, int y);
 
+    // Shift rect/strip selection ----------------------------------------
+    enum class CandColor { Red, Green, Gray };
+    enum class CandMode  { Touching, Inside };
+    // Apply the captured polygon with chosen parameters. Threshold is the
+    // max src gray value of components that are eligible (≤ threshold; use
+    // 255 to disable). Emits editOp() for undo.
+    void commitRectSelection(int threshold, CandMode mode, CandColor color);
+    // Drops the in-progress / pending polygon and repaints.
+    void cancelRectSelection();
+    bool hasPendingRect() const { return !lastPolyMask_.empty(); }
+    // True when a rect/strip Gray-color commit would be meaningful here
+    // (allowGrayEdit_ is on and the active preset has a GraySource bg).
+    bool grayCandidateAvailable() const;
+
 signals:
     void hudUpdate(const QString& s);
     void dirtyChanged(bool dirty);
@@ -67,6 +81,11 @@ signals:
     // is false. MainWindow shows a confirmation dialog and on Yes calls
     // setAllowGrayEdit(true) + performGrayEditAt(x, y).
     void grayEditRequested(int x, int y);
+    // Emitted after a Shift-drag rect or Shift-click strip has been
+    // captured. MainWindow opens the candidate dialog; on accept it
+    // calls commitRectSelection() with the chosen parameters, on cancel
+    // cancelRectSelection().
+    void rectSelectionFinished();
 
 protected:
     void paintEvent(QPaintEvent* e) override;
@@ -97,6 +116,19 @@ private:
     int  cellAt(int x, int y) const;    // 0..7 = (in1<<2)|(in2<<1)|out
     QRgb composePixel(int x, int y) const;
     void buildDefaultPresets();
+
+    // Same-value gray-component analysis (used by rect/strip commit).
+    void analyzeComponents();
+    // Strip geometry: rectangle defined by axis p1→p2 extended by the
+    // perpendicular vector from p1 to cursor.
+    std::vector<cv::Point> stripCorners(const QPoint& p1,
+                                        const QPoint& p2,
+                                        const QPoint& cursor) const;
+    // Build lastPolyMask_ from current rect or strip and emit
+    // rectSelectionFinished.
+    void finishRectFromCurrent();
+    void finishStrip(const QPoint& widthRef);
+    void cancelStripInProgress();
     void floodSegment(int x0, int y0, int wantedColor,
                       std::vector<cv::Point>& out) const;
     void floodAnyColor(int x0, int y0, std::vector<cv::Point>& out) const;
@@ -110,6 +142,22 @@ private:
     bool    conn8_ = true;
     bool    dirty_ = false;
     bool    allowGrayEdit_ = false;
+
+    // Same-value components over src_; built by analyzeComponents() in
+    // setData(). labels_[0] = background (src >= 255); other labels index
+    // labelSize_ / labelValue_.
+    cv::Mat labels_;                    // CV_32S
+    std::vector<int>   labelSize_;
+    std::vector<uchar> labelValue_;     // src gray value per label
+
+    // Shift selection state.
+    enum class StripPhase { None, Tentative, P1Set, P2Set };
+    StripPhase stripPhase_ = StripPhase::None;
+    QPoint     stripP1_, stripP2_, stripCursor_;
+    QPoint     stripPressWidget_;
+    bool       rectDragging_ = false;
+    QPoint     rectStart_, rectEnd_;
+    cv::Mat    lastPolyMask_;           // 0/255 mask of the last committed polygon
 
     std::vector<ViewPreset> presets_;
     int presetIndex_ = 0;

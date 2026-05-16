@@ -7,6 +7,8 @@
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QEvent>
 #include <QFileDialog>
@@ -185,6 +187,8 @@ void OcMainWindow::createUi()
             view_, &OcViewWidget::setAllowGrayEdit);
     connect(view_, &OcViewWidget::grayEditRequested,
             this, &OcMainWindow::onGrayEditRequested);
+    connect(view_, &OcViewWidget::rectSelectionFinished,
+            this, &OcMainWindow::onRectSelectionFinished);
 
     connect(presetCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int i) { view_->setPresetIndex(i); });
@@ -235,6 +239,76 @@ void OcMainWindow::updateDoneButton(bool done)
             "QPushButton{background-color:#c33;color:white;"
             "padding:4px 14px;border:1px solid #911;border-radius:4px;}");
     }
+}
+
+void OcMainWindow::onRectSelectionFinished()
+{
+    if (rectDialog_) { rectDialog_->close(); rectDialog_ = nullptr; }
+
+    auto* dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowFlags(dlg->windowFlags() | Qt::Tool | Qt::WindowStaysOnTopHint);
+    dlg->setWindowTitle("Rect threshold");
+    dlg->setModal(false);
+
+    auto* sb = new QSpinBox(dlg);
+    sb->setRange(0, 255);
+    sb->setValue(lastRectThreshold_);
+    sb->setAccelerated(true);
+    sb->setToolTip("Components with src gray ≤ threshold are eligible");
+
+    auto* modeCb = new QComboBox(dlg);
+    modeCb->addItem("Touching (components partially)", 0);
+    modeCb->addItem("Inside (components fully)",       1);
+    if (lastCandidateMode_ < modeCb->count())
+        modeCb->setCurrentIndex(lastCandidateMode_);
+
+    auto* colorCb = new QComboBox(dlg);
+    colorCb->addItem("Red (only outline 2)",   int(OcViewWidget::CandColor::Red));
+    colorCb->addItem("Green (only outline 1)", int(OcViewWidget::CandColor::Green));
+    if (view_->grayCandidateAvailable()) {
+        colorCb->addItem("Gray (no outline)",  int(OcViewWidget::CandColor::Gray));
+    }
+    {
+        const int wanted = lastCandidateColor_;
+        const int idx = colorCb->findData(wanted);
+        colorCb->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
+
+    auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
+
+    auto* lay = new QVBoxLayout(dlg);
+    lay->setContentsMargins(8, 8, 8, 8);
+    lay->addWidget(new QLabel("≤ threshold → eligible components"));
+    lay->addWidget(sb);
+    lay->addWidget(new QLabel("Spatial:"));
+    lay->addWidget(modeCb);
+    lay->addWidget(new QLabel("Add color:"));
+    lay->addWidget(colorCb);
+    lay->addWidget(bb);
+
+    connect(bb, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
+    connect(bb, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
+    connect(dlg, &QDialog::accepted, this, [this, sb, modeCb, colorCb]() {
+        lastRectThreshold_  = sb->value();
+        lastCandidateMode_  = modeCb->currentIndex();
+        lastCandidateColor_ = colorCb->currentData().toInt();
+        const auto mode  = (lastCandidateMode_ == 0)
+            ? OcViewWidget::CandMode::Touching
+            : OcViewWidget::CandMode::Inside;
+        const auto color = static_cast<OcViewWidget::CandColor>(lastCandidateColor_);
+        view_->commitRectSelection(sb->value(), mode, color);
+        rectDialog_ = nullptr;
+    });
+    connect(dlg, &QDialog::rejected, this, [this]() {
+        view_->cancelRectSelection();
+        rectDialog_ = nullptr;
+    });
+
+    rectDialog_ = dlg;
+    dlg->adjustSize();
+    dlg->show();
+    sb->setFocus();
 }
 
 void OcMainWindow::onGrayEditRequested(int x, int y)
