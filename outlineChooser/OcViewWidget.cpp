@@ -254,10 +254,8 @@ void OcViewWidget::setRectPreview(int threshold, CandMode mode, CandColor color)
     }
     // Compose RGBA image.
     cv::Mat rgba(rows, cols, CV_8UC4, cv::Scalar(0, 0, 0, 0));
-    const QColor co = edit_colors::candidateOrange();
-    const QColor cy = edit_colors::candidateYellow();
-    const cv::Vec4b vo(co.red(), co.green(), co.blue(), co.alpha());
-    const cv::Vec4b vy(cy.red(), cy.green(), cy.blue(), cy.alpha());
+    const cv::Vec4b vo = edit_colors::orange();
+    const cv::Vec4b vy = edit_colors::darkYellow();
     for (int y = 0; y < rows; ++y) {
         const uchar* orng = previewOrange_.ptr<uchar>(y);
         const uchar* yelw = previewYellow_.ptr<uchar>(y);
@@ -372,7 +370,7 @@ void OcViewWidget::buildDefaultPresets()
     const QColor BLK  (0,   0,   0,   255);
     const QColor RED  (220, 0,   0,   255);
     const QColor GRN  (0,   180, 0,   255);
-    const QColor YEL  (180, 180, 0,   220);
+    const QColor YEL  = edit_colors::toQColor(edit_colors::darkYellow());
     const QColor RSEM (220, 0,   0,   180);
 
     // Cell index = (in1<<2)|(in2<<1)|out

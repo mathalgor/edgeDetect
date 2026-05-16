@@ -1162,9 +1162,11 @@ void CannyViewWidget::rebuildThresholdOverlay()
         const uchar* ar = thresholdAdd_.ptr<uchar>(y);
         const uchar* rr = thresholdRemove_.ptr<uchar>(y);
         cv::Vec4b* dr = rgba.ptr<cv::Vec4b>(y);
+        const cv::Vec4b vy = edit_colors::darkYellow();
+        const cv::Vec4b vo = edit_colors::orange();
         for (int x = 0; x < cols; ++x) {
-            if (rr[x])      dr[x] = cv::Vec4b(180, 180, 0, 220);  // dark yellow
-            else if (ar[x]) dr[x] = cv::Vec4b(255, 140, 0, 220);  // orange
+            if (rr[x])      dr[x] = vy;
+            else if (ar[x]) dr[x] = vo;
         }
     }
     thresholdOverlayImage_ = QImage(rgba.data, cols, rows, int(rgba.step),
@@ -1517,10 +1519,8 @@ void CannyViewWidget::rebuildRectOverlay()
         const uchar* yr = yellowMask_.ptr<uchar>(y);
         const uchar* orr = orangeMask_.ptr<uchar>(y);
         cv::Vec4b* dr = rgba.ptr<cv::Vec4b>(y);
-        const QColor co = edit_colors::candidateOrange();
-        const QColor cy = edit_colors::candidateYellow();
-        const cv::Vec4b voc(co.red(), co.green(), co.blue(), co.alpha());
-        const cv::Vec4b vyl(cy.red(), cy.green(), cy.blue(), cy.alpha());
+        const cv::Vec4b voc = edit_colors::orange();
+        const cv::Vec4b vyl = edit_colors::darkYellow();
         for (int x = 0; x < cols; ++x) {
             if (orr[x])     dr[x] = voc;
             else if (yr[x]) dr[x] = vyl;
