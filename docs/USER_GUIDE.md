@@ -216,9 +216,16 @@ final result.
 | 3   | Original + diff            | Original photo with diff colors over it (green/red/yellow); ignores the result. |
 | 4   | Gray source + diff         | Same diff colors over the multi-Canny gray map. |
 | 5   | Result only                | Just your result, black on white. |
+| 6   | Result + outline 1 (green) | Result in black + the *non-accepted* outline-1 pixels in green (so you can see in isolation what only outline 1 would still add). |
+| 7   | Result + outline 2 (red)   | Same idea for outline 2. |
 
 Same shortcuts as cannyToOutline: digit keys pick a preset, **Tab** swaps
 with the previous one.
+
+Presets 6 and 7 are handy when one of the two candidate outlines has
+many more (often noisier) pixels than the other but the smaller one
+contributes a few useful additions — flip between them and the Standard
+view to decide which extras to bring in.
 
 ### Editing
 

@@ -114,6 +114,13 @@ void OcViewWidget::buildDefaultPresets()
         T,     T,     RED,   RED,   GRN,   GRN,   YEL,   YEL);
     add("Result only",             ViewPreset::Background::White,
         T,     BLK,   T,     BLK,   T,     BLK,   T,     BLK);
+    // Result + the non-accepted candidates from one outline. Useful when one
+    // candidate is much smaller but consistently better — you can see in
+    // isolation what it would add.
+    add("Result + outline 1 (green)", ViewPreset::Background::White,
+        T,     BLK,   T,     BLK,   GRN,   BLK,   GRN,   BLK);
+    add("Result + outline 2 (red)",   ViewPreset::Background::White,
+        T,     BLK,   RED,   BLK,   T,     BLK,   RED,   BLK);
 }
 
 void OcViewWidget::setConn8(bool on)

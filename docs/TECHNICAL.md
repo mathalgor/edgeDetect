@@ -453,6 +453,8 @@ Built-in presets (hard-coded in `OcViewWidget::buildDefaultPresets()`):
 | 3 | Original + diff                 | Original    | Diff colors over the photo, `out` ignored. |
 | 4 | Gray source + diff              | GraySource  | Same diff colors over `src_`. |
 | 5 | Result only                     | White       | Black for any cell with `out=1`; everything else transparent. |
+| 6 | Result + outline 1 (green)      | White       | Black for `out=1`; green for `in1=1 && out=0` (cells 4 and 6); rest transparent. |
+| 7 | Result + outline 2 (red)        | White       | Black for `out=1`; red for `in2=1 && out=0` (cells 2 and 6); rest transparent. |
 
 Switching presets:
 
