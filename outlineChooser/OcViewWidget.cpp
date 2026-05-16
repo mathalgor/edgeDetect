@@ -400,22 +400,45 @@ void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
     const int c = colorAt(ix, iy);
     if (c == 0) return;  // white — do nothing
     std::vector<cv::Point> pts;
+    std::vector<cv::Point> changed;
+    const bool add = (c != 4);
     if (c == 4) {
-        // black → deselect the WHOLE same-value segment (those pixels which are in out)
+        // black → deselect the WHOLE same-value segment, but only pixels
+        // currently in out_ actually change.
         floodAnyColor(ix, iy, pts);
+        changed.reserve(pts.size());
         for (const auto& p : pts) {
-            if (out_.at<uchar>(p.y, p.x)) out_.at<uchar>(p.y, p.x) = 0;
+            if (out_.at<uchar>(p.y, p.x)) {
+                out_.at<uchar>(p.y, p.x) = 0;
+                changed.push_back(p);
+            }
         }
     } else {
-        // green/red/yellow → add segment-pixels of the same color
+        // green/red/yellow → add segment-pixels of the same color. All
+        // such pixels are currently out_=0 (colorAt returns 4 if inOut),
+        // so every flooded point is a real change.
         floodSegment(ix, iy, c, pts);
-        for (const auto& p : pts) out_.at<uchar>(p.y, p.x) = 255;
+        changed = pts;
+        for (const auto& p : changed) out_.at<uchar>(p.y, p.x) = 255;
     }
-    if (!pts.empty()) {
-        updateVisualizationAt(pts);
+    if (!changed.empty()) {
+        updateVisualizationAt(changed);
         if (!dirty_) { dirty_ = true; emit dirtyChanged(true); }
         update();
+        emit editOp(changed, add);
     }
+}
+
+void OcViewWidget::applyOp(const std::vector<cv::Point>& pts, bool add)
+{
+    if (out_.empty() || pts.empty()) return;
+    const uchar v = add ? uchar(255) : uchar(0);
+    for (const auto& p : pts) {
+        out_.at<uchar>(p.y, p.x) = v;
+    }
+    updateVisualizationAt(pts);
+    if (!dirty_) { dirty_ = true; emit dirtyChanged(true); }
+    update();
 }
 
 void OcViewWidget::keyPressEvent(QKeyEvent* e)

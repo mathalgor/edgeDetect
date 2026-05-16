@@ -551,9 +551,19 @@ compression/bilevel options as cannyToOutline.
 Save prompt and dirty tracking mirror cannyToOutline (`maybeSave`,
 `doSave`, dirty flag emitting `dirtyChanged`).
 
-### 4.8 Not implemented
+### 4.8 Undo / redo
 
-* No undo/redo.
+Per click edit. `OcViewWidget::mouseReleaseEvent` builds the list of
+pixels that actually changed (for the black/remove case, only pixels
+currently in `out_`; for the add cases, every flooded segment-pixel of
+the matching color) and emits `editOp(pts, add)`. `OcMainWindow` pushes
+each onto `undoStack_` and clears `redoStack_`. Undo pops the top entry
+and calls `view_->applyOp(pts, !add)` — a signal-less setter that
+toggles those exact pixels and patches the visualization. Redo is the
+mirror. Stacks are cleared on `loadProjectIndex` (file switch).
+
+### 4.9 Not implemented
+
 * No bulk-merge tool (each file is curated by hand).
 
 ---

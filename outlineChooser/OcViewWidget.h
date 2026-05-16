@@ -43,10 +43,17 @@ public:
     void fitToWindow();
     void zoomOneToOne();
 
+    // Signal-less apply for undo/redo: set every pt in out_ to (add ? 255 : 0),
+    // patch the visualization, mark dirty.
+    void applyOp(const std::vector<cv::Point>& pts, bool add);
+
 signals:
     void hudUpdate(const QString& s);
     void dirtyChanged(bool dirty);
     void presetChanged(int index);
+    // Emitted after a click edit. `pts` are the pixels that actually
+    // changed; `add` is true for include-segment, false for remove-segment.
+    void editOp(std::vector<cv::Point> pts, bool add);
 
 protected:
     void paintEvent(QPaintEvent* e) override;

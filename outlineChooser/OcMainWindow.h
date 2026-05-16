@@ -4,6 +4,10 @@
 #include <QMainWindow>
 #include <QString>
 #include <QStringList>
+#include <QVector>
+
+#include <opencv2/core.hpp>
+#include <vector>
 
 #include "AppConfig.h"
 #include "ProjectConfig.h"
@@ -39,6 +43,9 @@ private slots:
     void onConn8Toggled(bool on);
     void onHud(const QString& s);
     void onDirtyChanged(bool d);
+    void onEditOp(std::vector<cv::Point> pts, bool add);
+    void onUndo();
+    void onRedo();
 
 private:
     void createUi();
@@ -61,6 +68,8 @@ private:
     QLabel* timeLabel_ = nullptr;
     QAction* aPrev_ = nullptr;
     QAction* aNext_ = nullptr;
+    QAction* aUndo_ = nullptr;
+    QAction* aRedo_ = nullptr;
     QSpinBox* fileSpin_ = nullptr;
     QCheckBox* conn8Cb_ = nullptr;
     QComboBox* presetCb_ = nullptr;
@@ -69,6 +78,15 @@ private:
 
     TimeTracker tracker_;
     void updateDoneButton(bool done);
+
+    struct EditOp {
+        std::vector<cv::Point> pts;
+        bool add = true;
+    };
+    QVector<EditOp> undoStack_;
+    QVector<EditOp> redoStack_;
+    void clearUndoStacks();
+    void updateUndoActions();
 
     AppConfig     appConfig_;
     ProjectConfig project_;

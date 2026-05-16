@@ -64,6 +64,13 @@ void OcMainWindow::createUi()
     setCentralWidget(central);
 
     auto* tb = addToolBar("main");
+    aUndo_ = tb->addAction("Undo");
+    aRedo_ = tb->addAction("Redo");
+    aUndo_->setShortcut(QKeySequence::Undo);
+    aRedo_->setShortcut(QKeySequence::Redo);
+    aUndo_->setEnabled(false);
+    aRedo_->setEnabled(false);
+    tb->addSeparator();
     aPrev_ = tb->addAction("◀");
     aNext_ = tb->addAction("▶");
     aPrev_->setShortcut(QKeySequence(Qt::Key_PageUp));
@@ -118,6 +125,10 @@ void OcMainWindow::createUi()
     auto* aQuit = mFile->addAction("&Quit");
     aQuit->setShortcut(QKeySequence::Quit);
 
+    auto* mEdit = menuBar()->addMenu("&Edit");
+    mEdit->addAction(aUndo_);
+    mEdit->addAction(aRedo_);
+
     auto* mView = menuBar()->addMenu("&View");
     mView->addAction(aFit);
     mView->addAction(aOne);
@@ -160,6 +171,9 @@ void OcMainWindow::createUi()
 
     connect(view_, &OcViewWidget::hudUpdate, this, &OcMainWindow::onHud);
     connect(view_, &OcViewWidget::dirtyChanged, this, &OcMainWindow::onDirtyChanged);
+    connect(view_, &OcViewWidget::editOp, this, &OcMainWindow::onEditOp);
+    connect(aUndo_, &QAction::triggered, this, &OcMainWindow::onUndo);
+    connect(aRedo_, &QAction::triggered, this, &OcMainWindow::onRedo);
 
     connect(presetCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int i) { view_->setPresetIndex(i); });
@@ -210,6 +224,44 @@ void OcMainWindow::updateDoneButton(bool done)
             "QPushButton{background-color:#c33;color:white;"
             "padding:4px 14px;border:1px solid #911;border-radius:4px;}");
     }
+}
+
+void OcMainWindow::onEditOp(std::vector<cv::Point> pts, bool add)
+{
+    undoStack_.push_back({ std::move(pts), add });
+    redoStack_.clear();
+    updateUndoActions();
+}
+
+void OcMainWindow::onUndo()
+{
+    if (undoStack_.isEmpty()) return;
+    const EditOp op = undoStack_.takeLast();
+    view_->applyOp(op.pts, !op.add);
+    redoStack_.push_back(op);
+    updateUndoActions();
+}
+
+void OcMainWindow::onRedo()
+{
+    if (redoStack_.isEmpty()) return;
+    const EditOp op = redoStack_.takeLast();
+    view_->applyOp(op.pts, op.add);
+    undoStack_.push_back(op);
+    updateUndoActions();
+}
+
+void OcMainWindow::clearUndoStacks()
+{
+    undoStack_.clear();
+    redoStack_.clear();
+    updateUndoActions();
+}
+
+void OcMainWindow::updateUndoActions()
+{
+    if (aUndo_) aUndo_->setEnabled(!undoStack_.isEmpty());
+    if (aRedo_) aRedo_->setEnabled(!redoStack_.isEmpty());
 }
 
 bool OcMainWindow::eventFilter(QObject* obj, QEvent* e)
@@ -394,6 +446,7 @@ bool OcMainWindow::loadProjectIndex(int idx)
     view_->setData(g, o1, o2, existingOut, original);
     fileIndex_ = idx;
     currentPath_ = src;
+    clearUndoStacks();
     tracker_.setCurrentFile(name);
     updateDoneButton(tracker_.isDone(name));
     timeLabel_->setText("Time: " + TimeTracker::formatHMS(tracker_.secondsFor(name)));

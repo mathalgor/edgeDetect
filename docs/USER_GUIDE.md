@@ -257,8 +257,11 @@ flood-fill.
 
 `Ctrl+S`. The file format matches cannyToOutline (1-bit PNG, 0 = line).
 
-There is currently no undo/redo and no bulk-merge tool — outlineChooser is
-designed for hand-curation of a few hard cases.
+### Undo / redo
+
+`Ctrl+Z` / `Ctrl+Shift+Z`, one entry per click edit. Undo flips the
+pixels touched by that edit back to their previous state; redo replays
+it. The stacks are cleared on every file switch.
 
 ---
 
