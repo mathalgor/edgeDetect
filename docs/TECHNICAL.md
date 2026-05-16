@@ -496,6 +496,7 @@ Built-in presets (hard-coded in `OcViewWidget::buildDefaultPresets()`):
 | 5 | Result only                     | White       | Black for any cell with `out=1`; everything else transparent. |
 | 6 | Result + outline 1 (green)      | White       | Black for `out=1`; green for `in1=1 && out=0` (cells 4 and 6); rest transparent. |
 | 7 | Result + outline 2 (red)        | White       | Black for `out=1`; red for `in2=1 && out=0` (cells 2 and 6); rest transparent. |
+| 8 | Gray + result + diff            | GraySource  | Standard palette over the multi-canny gray. The only preset whose background visibly distinguishes plain-gray pixels (cell 0 with `src<255`) — enables the "click on gray" advanced edit. |
 
 Switching presets:
 
@@ -524,6 +525,14 @@ pixels touched by a flood-fill — both paths therefore stay consistent.
 Mouse drag pans. The click is only consumed when the cursor didn't move
 (>3 px = treated as pan).
 
+Editing is gated by **preset content**, not by preset index — the
+`ViewPreset::isEditable()` helper returns true iff the preset both
+`showsResult()` (at least one `out=1` cell with α>0) and shows at least
+one outline candidate outside the result (`showsO1Outside()` or
+`showsO2Outside()`, i.e. cell 2/4/6 with α>0). In a preset that fails
+the test, `mouseReleaseEvent` returns immediately and the click acts
+purely as a pan-cleanup.
+
 * When Ctrl is **held** the cursor changes to the pick cursor (tolerance
   ring). On click, if the exact pixel is white, search a radius of
   `round(8 / scale)` image pixels for the **nearest non-white pixel** (any
@@ -541,6 +550,19 @@ After the seed is determined, `colorAt(x, y)` decides what to do:
   and remove from `out_` every pixel of that segment currently in `out_`.
 
 `updateVisualizationAt(pts)` patches just the modified pixels in `vis_`.
+
+#### "Click on gray" (advanced)
+
+In a `GraySource`-background preset, clicking on cell 0 with
+`src < 255` (a gray edge pixel that is not in any outline) can add the
+whole same-value segment to `out_`. This requires `allowGrayEdit_` to
+be true on the view; if not, the widget emits
+`grayEditRequested(x, y)`. `OcMainWindow` answers with a confirmation
+dialog (Yes = Enter, Cancel = Esc); on Yes it sets the checkable
+`Edit → Allow click on gray (advanced)` menu item, which forwards to
+`view_->setAllowGrayEdit(true)`, and then calls
+`view_->performGrayEditAt(x, y)` to actually carry out the edit. The
+flag is session-only; reopening the app re-asks on first gray click.
 
 ### 4.7 Save
 

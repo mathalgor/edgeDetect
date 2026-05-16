@@ -47,6 +47,15 @@ public:
     // patch the visualization, mark dirty.
     void applyOp(const std::vector<cv::Point>& pts, bool add);
 
+    // Advanced editing: allow click on a gray edge pixel (cell 0 with
+    // src < 255) to add that whole same-value segment to the result.
+    // Only meaningful with a GraySource-background preset.
+    void setAllowGrayEdit(bool on) { allowGrayEdit_ = on; }
+    bool allowGrayEdit() const { return allowGrayEdit_; }
+    // Performs the gray-edit at (x,y) unconditionally. Used by MainWindow
+    // after the user confirms the enabling dialog.
+    void performGrayEditAt(int x, int y);
+
 signals:
     void hudUpdate(const QString& s);
     void dirtyChanged(bool dirty);
@@ -54,6 +63,10 @@ signals:
     // Emitted after a click edit. `pts` are the pixels that actually
     // changed; `add` is true for include-segment, false for remove-segment.
     void editOp(std::vector<cv::Point> pts, bool add);
+    // Emitted when the user clicks a gray candidate but allowGrayEdit_
+    // is false. MainWindow shows a confirmation dialog and on Yes calls
+    // setAllowGrayEdit(true) + performGrayEditAt(x, y).
+    void grayEditRequested(int x, int y);
 
 protected:
     void paintEvent(QPaintEvent* e) override;
@@ -93,6 +106,7 @@ private:
     QImage  vis_;          // RGBA visualization (composed)
     bool    conn8_ = true;
     bool    dirty_ = false;
+    bool    allowGrayEdit_ = false;
 
     std::vector<ViewPreset> presets_;
     int presetIndex_ = 0;

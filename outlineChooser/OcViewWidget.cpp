@@ -121,6 +121,11 @@ void OcViewWidget::buildDefaultPresets()
         T,     BLK,   T,     BLK,   GRN,   BLK,   GRN,   BLK);
     add("Result + outline 2 (red)",   ViewPreset::Background::White,
         T,     BLK,   RED,   BLK,   T,     BLK,   RED,   BLK);
+    // Standard palette but over the gray multi-canny background. This is
+    // the only preset that supports "click on gray" advanced editing,
+    // since only here can the user actually see the gray edge pixels.
+    add("Gray + result + diff",     ViewPreset::Background::GraySource,
+        T,     BLK,   RED,   BLK,   GRN,   BLK,   YEL,   BLK);
 }
 
 void OcViewWidget::setConn8(bool on)
@@ -384,6 +389,8 @@ void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
     if (d.x()*d.x() + d.y()*d.y() > 9) { update(); return; }
 
     if (vis_.isNull()) return;
+    const ViewPreset& preset = presets_[presetIndex_];
+    if (!preset.isEditable()) return;   // current preset is display-only
     const QPointF ip = widgetToImage(e->pos());
     int ix = int(std::floor(ip.x())), iy = int(std::floor(ip.y()));
     if (ix < 0 || iy < 0 || ix >= src_.cols || iy >= src_.rows) return;
@@ -398,7 +405,16 @@ void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
     }
 
     const int c = colorAt(ix, iy);
-    if (c == 0) return;  // white — do nothing
+    if (c == 0) {
+        // Cell 0 — no outline pixel here. Offer the "click on gray"
+        // advanced edit only when the preset uses the gray source as its
+        // background (so the user actually sees what they're clicking).
+        if (preset.bg != ViewPreset::Background::GraySource) return;
+        if (src_.empty() || src_.at<uchar>(iy, ix) >= 255) return;
+        if (!allowGrayEdit_) { emit grayEditRequested(ix, iy); return; }
+        performGrayEditAt(ix, iy);
+        return;
+    }
     std::vector<cv::Point> pts;
     std::vector<cv::Point> changed;
     const bool add = (c != 4);
@@ -427,6 +443,28 @@ void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
         update();
         emit editOp(changed, add);
     }
+}
+
+void OcViewWidget::performGrayEditAt(int x0, int y0)
+{
+    if (src_.empty()) return;
+    if (x0 < 0 || y0 < 0 || x0 >= src_.cols || y0 >= src_.rows) return;
+    if (src_.at<uchar>(y0, x0) >= 255) return;
+    std::vector<cv::Point> pts;
+    floodAnyColor(x0, y0, pts);
+    std::vector<cv::Point> changed;
+    changed.reserve(pts.size());
+    for (const auto& p : pts) {
+        if (!out_.at<uchar>(p.y, p.x)) {
+            out_.at<uchar>(p.y, p.x) = 255;
+            changed.push_back(p);
+        }
+    }
+    if (changed.empty()) return;
+    updateVisualizationAt(changed);
+    if (!dirty_) { dirty_ = true; emit dirtyChanged(true); }
+    update();
+    emit editOp(changed, /*add=*/true);
 }
 
 void OcViewWidget::applyOp(const std::vector<cv::Point>& pts, bool add)

@@ -218,9 +218,30 @@ final result.
 | 5   | Result only                | Just your result, black on white. |
 | 6   | Result + outline 1 (green) | Result in black + the *non-accepted* outline-1 pixels in green (so you can see in isolation what only outline 1 would still add). |
 | 7   | Result + outline 2 (red)   | Same idea for outline 2. |
+| 8   | Gray + result + diff       | Standard palette on a gray-source background. The only preset that supports the "click on gray" advanced edit (see below). |
 
 Same shortcuts as cannyToOutline: digit keys pick a preset, **Tab** swaps
 with the previous one.
+
+#### When can you edit?
+
+Editing by click works only in presets where you can both **see the
+current result** AND **see at least one candidate outline outside the
+result** — so it's meaningful to choose what to add. With the built-in
+presets that means **1, 3, 4, 6, 7, 8**. Presets **2** (Original +
+result red) and **5** (Result only) are display-only — clicks just pan.
+
+#### "Click on gray" (advanced)
+
+The **Gray + result + diff** preset (8) additionally lets you add a
+segment to the result by clicking on a **gray source pixel** that is
+not in either candidate outline — useful when you spot an edge both
+candidates missed.
+
+This is gated by **Edit → Allow click on gray (advanced)**. The first
+time you click on a gray pixel with the option off, a dialog asks
+whether to enable it: **Enter** = Yes (turns it on for the session and
+performs the edit), **Esc** = Cancel.
 
 Presets 6 and 7 are handy when one of the two candidate outlines has
 many more (often noisier) pixels than the other but the smaller one

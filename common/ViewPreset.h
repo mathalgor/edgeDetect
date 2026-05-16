@@ -15,6 +15,25 @@ struct ViewPreset {
     QString name;
     Background bg = Background::White;
     QColor cells[8];
+
+    // Whether the preset visibly shows at least one result-pixel
+    // (any cell with out=1: indices 1, 3, 5, 7).
+    bool showsResult() const {
+        return cells[1].alpha() > 0 || cells[3].alpha() > 0
+            || cells[5].alpha() > 0 || cells[7].alpha() > 0;
+    }
+    // Outline-1 pixel NOT in result (indices 4 = 100, 6 = 110).
+    bool showsO1Outside() const {
+        return cells[4].alpha() > 0 || cells[6].alpha() > 0;
+    }
+    bool showsO2Outside() const {
+        return cells[2].alpha() > 0 || cells[6].alpha() > 0;
+    }
+    // Editing makes sense when the user can see both the current result
+    // and at least one outline's candidates that are not yet in result.
+    bool isEditable() const {
+        return showsResult() && (showsO1Outside() || showsO2Outside());
+    }
 };
 
 #endif

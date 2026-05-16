@@ -128,6 +128,13 @@ void OcMainWindow::createUi()
     auto* mEdit = menuBar()->addMenu("&Edit");
     mEdit->addAction(aUndo_);
     mEdit->addAction(aRedo_);
+    mEdit->addSeparator();
+    aAllowGrayEdit_ = mEdit->addAction("Allow click on gray (advanced)");
+    aAllowGrayEdit_->setCheckable(true);
+    aAllowGrayEdit_->setToolTip(
+        "Enables clicking on a gray source pixel that is not in any "
+        "outline to add its same-value segment to the result. Only "
+        "active in presets with a gray-source background.");
 
     auto* mView = menuBar()->addMenu("&View");
     mView->addAction(aFit);
@@ -174,6 +181,10 @@ void OcMainWindow::createUi()
     connect(view_, &OcViewWidget::editOp, this, &OcMainWindow::onEditOp);
     connect(aUndo_, &QAction::triggered, this, &OcMainWindow::onUndo);
     connect(aRedo_, &QAction::triggered, this, &OcMainWindow::onRedo);
+    connect(aAllowGrayEdit_, &QAction::toggled,
+            view_, &OcViewWidget::setAllowGrayEdit);
+    connect(view_, &OcViewWidget::grayEditRequested,
+            this, &OcMainWindow::onGrayEditRequested);
 
     connect(presetCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int i) { view_->setPresetIndex(i); });
@@ -224,6 +235,23 @@ void OcMainWindow::updateDoneButton(bool done)
             "QPushButton{background-color:#c33;color:white;"
             "padding:4px 14px;border:1px solid #911;border-radius:4px;}");
     }
+}
+
+void OcMainWindow::onGrayEditRequested(int x, int y)
+{
+    // Pressing Enter (default) confirms, ESC cancels.
+    QMessageBox box(QMessageBox::Question,
+        "Advanced editing",
+        "You clicked on a gray source pixel that is not in any outline.\n\n"
+        "Adding pixels by clicking on gray is an advanced edit that is "
+        "currently disabled. Enable it for this session?\n\n"
+        "You can also toggle it later from Edit → Allow click on gray.",
+        QMessageBox::Yes | QMessageBox::Cancel, this);
+    box.setDefaultButton(QMessageBox::Yes);
+    box.setEscapeButton(QMessageBox::Cancel);
+    if (box.exec() != QMessageBox::Yes) return;
+    aAllowGrayEdit_->setChecked(true);   // triggers setAllowGrayEdit(true)
+    view_->performGrayEditAt(x, y);
 }
 
 void OcMainWindow::onEditOp(std::vector<cv::Point> pts, bool add)
