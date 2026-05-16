@@ -213,15 +213,15 @@ final result.
 
 | Key | Preset | What you see |
 |-----|--------|--------------|
-| 1   | **Standard** *(default)*   | White bg; black = in result, red = only in outline 2, green = only in outline 1, dark yellow = common but **not** in result. |
-| 2   | Original + result red      | Original photo, every pixel currently in your result drawn as a semi-transparent red overlay. |
-| 3   | Original + diff            | Original photo with diff colors over it (green/red/yellow); ignores the result. |
-| 4   | Gray source + diff         | Same diff colors over the multi-Canny gray map. |
-| 5   | Result only                | Just your result, black on white. |
-| 6   | Result + outline 1 (green) | Result in black + the *non-accepted* outline-1 pixels in green (so you can see in isolation what only outline 1 would still add). |
-| 7   | Result + outline 2 (red)   | Same idea for outline 2. |
-| 8   | Gray + result + diff       | Standard palette on a gray-source background. The only preset that supports the "click on gray" advanced edit (see below). |
-| 9   | Original only              | Just the original photo, no overlays. Display-only. |
+| 1   | **Standard** *(default)*    | White bg; black = in result, red = only in outline 2, green = only in outline 1, dark yellow = common but **not** in result. |
+| 2   | Original only               | Just the original photo, no overlays. Display-only. |
+| 3   | Original + result red       | Original photo, every pixel currently in your result drawn as a semi-transparent red overlay. |
+| 4   | Original + result + diff    | Original photo with diff colours over it (green/red/yellow); result pixels are shown in the same colour as their origin outline. |
+| 5   | Gray source + diff          | Same diff colours over the multi-Canny gray map. |
+| 6   | Result only                 | Just your result, black on white. |
+| 7   | Result + outline 1 (green)  | Result in black + the *non-accepted* outline-1 pixels in green (so you can see in isolation what only outline 1 would still add). |
+| 8   | Result + outline 2 (red)    | Same idea for outline 2. |
+| 9   | Gray + result + diff        | Standard palette on a gray-source background. The only preset that supports the "click on gray" advanced edit (see below). |
 
 Same shortcuts as cannyToOutline: digit keys pick a preset, **Tab** swaps
 with the previous one.

@@ -377,9 +377,15 @@ void OcViewWidget::buildDefaultPresets()
     //              0      1      2      3      4      5      6      7
     add("Standard",                ViewPreset::Background::White,
         T,     BLK,   RED,   BLK,   GRN,   BLK,   YEL,   BLK);
+    // Pure original photo — every cell transparent, no overlays.
+    add("Original only",           ViewPreset::Background::Original,
+        T,     T,     T,     T,     T,     T,     T,     T);
     add("Original + result red",   ViewPreset::Background::Original,
         T,     RSEM,  T,     RSEM,  T,     RSEM,  T,     RSEM);
-    add("Original + diff",         ViewPreset::Background::Original,
+    // Cells 3/5/7 (any with out=1) take the same colour as the matching
+    // out=0 cell — the result is shown, just in its origin colour rather
+    // than as black.
+    add("Original + result + diff", ViewPreset::Background::Original,
         T,     T,     RED,   RED,   GRN,   GRN,   YEL,   YEL);
     add("Gray source + diff",      ViewPreset::Background::GraySource,
         T,     T,     RED,   RED,   GRN,   GRN,   YEL,   YEL);
@@ -397,9 +403,6 @@ void OcViewWidget::buildDefaultPresets()
     // since only here can the user actually see the gray edge pixels.
     add("Gray + result + diff",     ViewPreset::Background::GraySource,
         T,     BLK,   RED,   BLK,   GRN,   BLK,   YEL,   BLK);
-    // Pure original photo — every cell transparent, no overlays.
-    add("Original only",            ViewPreset::Background::Original,
-        T,     T,     T,     T,     T,     T,     T,     T);
 }
 
 void OcViewWidget::setConn8(bool on)
