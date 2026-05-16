@@ -382,11 +382,13 @@ void OcViewWidget::buildDefaultPresets()
         T,     T,     T,     T,     T,     T,     T,     T);
     add("Original + result red",   ViewPreset::Background::Original,
         T,     RSEM,  T,     RSEM,  T,     RSEM,  T,     RSEM);
-    // Cells 3/5/7 (any with out=1) take the same colour as the matching
-    // out=0 cell — the result is shown, just in its origin colour rather
-    // than as black.
+    // BLK = "in result" (uniform), RED / GRN keep their diff meaning for
+    // candidates outside result — click on green/red transitions visibly
+    // to black. "Both, not in result" (cell 6) is intentionally
+    // transparent: in this preset the diff is the priority and a black
+    // "in result" still stands out against the photo.
     add("Original + result + diff", ViewPreset::Background::Original,
-        T,     T,     RED,   RED,   GRN,   GRN,   YEL,   YEL);
+        T,     BLK,   RED,   BLK,   GRN,   BLK,   T,     BLK);
     add("Gray source + diff",      ViewPreset::Background::GraySource,
         T,     T,     RED,   RED,   GRN,   GRN,   YEL,   YEL);
     add("Result only",             ViewPreset::Background::White,
