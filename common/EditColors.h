@@ -18,9 +18,12 @@ inline QColor rubberBand()     { return QColor(0, 200, 255);     }
 inline QColor rubberBandFill() { return QColor(0, 200, 255, 40); }
 
 // Canonical overlay colors. Used for the live candidate preview
-// (orange = will be committed, dark yellow = eligible but rejected)
-// and for the "common, not in result" cell in outlineChooser presets.
-inline cv::Vec4b orange()     { return cv::Vec4b(255, 140, 0, 220); }
+// (blue = will be committed, dark yellow = eligible but rejected) and
+// for the "common, not in result" cell in outlineChooser presets.
+// Blue is used instead of an orange shade because the standard chooser
+// palette already uses red for only-outline-2 pixels — orange would be
+// too easy to confuse with it.
+inline cv::Vec4b blue()     { return cv::Vec4b(0, 0, 240, 220); }
 inline cv::Vec4b darkYellow() { return cv::Vec4b(180, 180, 0, 220); }
 
 // Convenience: Vec4b -> QColor for the paths that need a QColor.

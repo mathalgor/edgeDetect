@@ -1163,7 +1163,7 @@ void CannyViewWidget::rebuildThresholdOverlay()
         const uchar* rr = thresholdRemove_.ptr<uchar>(y);
         cv::Vec4b* dr = rgba.ptr<cv::Vec4b>(y);
         const cv::Vec4b vy = edit_colors::darkYellow();
-        const cv::Vec4b vo = edit_colors::orange();
+        const cv::Vec4b vo = edit_colors::blue();
         for (int x = 0; x < cols; ++x) {
             if (rr[x])      dr[x] = vy;
             else if (ar[x]) dr[x] = vo;
@@ -1519,7 +1519,7 @@ void CannyViewWidget::rebuildRectOverlay()
         const uchar* yr = yellowMask_.ptr<uchar>(y);
         const uchar* orr = orangeMask_.ptr<uchar>(y);
         cv::Vec4b* dr = rgba.ptr<cv::Vec4b>(y);
-        const cv::Vec4b voc = edit_colors::orange();
+        const cv::Vec4b voc = edit_colors::blue();
         const cv::Vec4b vyl = edit_colors::darkYellow();
         for (int x = 0; x < cols; ++x) {
             if (orr[x])     dr[x] = voc;

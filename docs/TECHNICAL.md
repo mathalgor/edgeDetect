@@ -590,13 +590,13 @@ whole bulk as one step.
 
 Live preview: as the user adjusts the dialog, MainWindow calls
 `view_->setRectPreview(threshold, mode, color)`, which rebuilds
-`previewOrange_` / `previewYellow_` and a composed `previewImage_`
-drawn over `vis_` by `paintEvent`. Orange = pixels that pass all three
+`previewBlue_` / `previewYellow_` and a composed `previewImage_`
+drawn over `vis_` by `paintEvent`. Blue = pixels that pass all three
 filters (spatial / threshold / colour) and aren't already in `out_`;
 dimmed yellow = pixels of eligible components whose label value rejects
 the threshold. Same colors as cannyToOutline, defined once in
-`common/EditColors.h` (`candidateOrange()`, `candidateYellow()`,
-`rubberBand()`, `rubberBandFill()`).
+`common/EditColors.h` (`blue()`, `darkYellow()`, `rubberBand()`,
+`rubberBandFill()`).
 
 The Gray colour option in the combo is always present. If the user
 picks Gray while `allowGrayEdit_` is off, MainWindow shows a

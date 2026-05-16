@@ -301,7 +301,7 @@ On release, a small floating dialog (stays on top, non-modal) asks for:
 
 While the dialog is open the eligible pixels are previewed live: the
 ones that **will** be committed at the current settings show in
-**orange**, while eligible-component pixels that the **threshold
+**blue**, while eligible-component pixels that the **threshold
 rejects** show in **dimmed yellow** — same colors as cannyToOutline.
 Adjust the spinbox / combos and the overlay updates in place.
 

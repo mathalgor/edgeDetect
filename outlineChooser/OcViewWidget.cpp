@@ -190,7 +190,7 @@ void OcViewWidget::cancelStripInProgress()
 void OcViewWidget::cancelRectSelection()
 {
     lastPolyMask_.release();
-    previewOrange_.release();
+    previewBlue_.release();
     previewYellow_.release();
     previewImage_ = {};
     previewActive_ = false;
@@ -228,14 +228,14 @@ void OcViewWidget::setRectPreview(int threshold, CandMode mode, CandColor color)
             includeBySpatial[L] = 1;
         }
     }
-    previewOrange_ = cv::Mat::zeros(src_.size(), CV_8UC1);
+    previewBlue_ = cv::Mat::zeros(src_.size(), CV_8UC1);
     previewYellow_ = cv::Mat::zeros(src_.size(), CV_8UC1);
     for (int y = 0; y < rows; ++y) {
         const int*   lr = labels_.ptr<int>(y);
         const uchar* o1 = o1_.ptr<uchar>(y);
         const uchar* o2 = o2_.ptr<uchar>(y);
         const uchar* oo = out_.ptr<uchar>(y);
-        uchar* orng = previewOrange_.ptr<uchar>(y);
+        uchar* orng = previewBlue_.ptr<uchar>(y);
         uchar* yelw = previewYellow_.ptr<uchar>(y);
         for (int x = 0; x < cols; ++x) {
             const int L = lr[x];
@@ -254,10 +254,10 @@ void OcViewWidget::setRectPreview(int threshold, CandMode mode, CandColor color)
     }
     // Compose RGBA image.
     cv::Mat rgba(rows, cols, CV_8UC4, cv::Scalar(0, 0, 0, 0));
-    const cv::Vec4b vo = edit_colors::orange();
+    const cv::Vec4b vo = edit_colors::blue();
     const cv::Vec4b vy = edit_colors::darkYellow();
     for (int y = 0; y < rows; ++y) {
-        const uchar* orng = previewOrange_.ptr<uchar>(y);
+        const uchar* orng = previewBlue_.ptr<uchar>(y);
         const uchar* yelw = previewYellow_.ptr<uchar>(y);
         cv::Vec4b* dr = rgba.ptr<cv::Vec4b>(y);
         for (int x = 0; x < cols; ++x) {
@@ -325,7 +325,7 @@ void OcViewWidget::commitRectSelection(int threshold, CandMode mode, CandColor c
         }
     }
     lastPolyMask_.release();
-    previewOrange_.release();
+    previewBlue_.release();
     previewYellow_.release();
     previewImage_ = {};
     previewActive_ = false;
@@ -565,7 +565,7 @@ void OcViewWidget::paintEvent(QPaintEvent*)
     p.setRenderHint(QPainter::SmoothPixmapTransform, !panning_ && scale_ < 1.0);
     p.drawImage(dst, vis_);
 
-    // Live candidate preview overlay (orange = will be added, yellow =
+    // Live candidate preview overlay (blue = will be added, yellow =
     // eligible but threshold rejects). Same colors as cannyToOutline.
     if (previewActive_ && !previewImage_.isNull()) {
         p.drawImage(dst, previewImage_);
