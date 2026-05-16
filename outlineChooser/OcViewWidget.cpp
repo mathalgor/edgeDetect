@@ -188,7 +188,7 @@ void OcViewWidget::rebuildVisualization()
 {
     if (src_.empty()) { vis_ = {}; return; }
     const int rows = src_.rows, cols = src_.cols;
-    QImage img(cols, rows, QImage::Format_RGBA8888);
+    QImage img(cols, rows, QImage::Format_ARGB32);
     for (int y = 0; y < rows; ++y) {
         QRgb* dr = reinterpret_cast<QRgb*>(img.scanLine(y));
         for (int x = 0; x < cols; ++x) {
