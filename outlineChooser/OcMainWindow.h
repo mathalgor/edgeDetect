@@ -10,6 +10,7 @@
 
 class QAction;
 class QCheckBox;
+class QComboBox;
 class QLabel;
 class QMenu;
 class QSpinBox;
@@ -54,6 +55,7 @@ private:
     QAction* aNext_ = nullptr;
     QSpinBox* fileSpin_ = nullptr;
     QCheckBox* conn8Cb_ = nullptr;
+    QComboBox* presetCb_ = nullptr;
     QMenu* recentMenu_ = nullptr;
 
     AppConfig     appConfig_;

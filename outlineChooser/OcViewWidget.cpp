@@ -13,12 +13,14 @@ OcViewWidget::OcViewWidget(QWidget* parent) : QWidget(parent)
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_OpaquePaintEvent);
+    buildDefaultPresets();
 }
 
 void OcViewWidget::setData(const cv::Mat& srcGray,
                            const cv::Mat& o1FileFmt,
                            const cv::Mat& o2FileFmt,
-                           const cv::Mat& outFileFmt)
+                           const cv::Mat& outFileFmt,
+                           const cv::Mat& original)
 {
     src_ = srcGray.clone();
     auto invert = [&](const cv::Mat& fileFmt) -> cv::Mat {
@@ -41,12 +43,77 @@ void OcViewWidget::setData(const cv::Mat& srcGray,
     } else {
         out_ = invert(outFileFmt);
     }
+
+    // Build original as RGBA at src_ size; empty if not provided.
+    originalRgba_.release();
+    if (!original.empty()) {
+        cv::Mat o = original;
+        if (o.size() != src_.size()) {
+            cv::Mat r;
+            cv::resize(o, r, src_.size(), 0, 0, cv::INTER_AREA);
+            o = r;
+        }
+        if (o.channels() == 1)      cv::cvtColor(o, originalRgba_, cv::COLOR_GRAY2RGBA);
+        else if (o.channels() == 3) cv::cvtColor(o, originalRgba_, cv::COLOR_BGR2RGBA);
+        else if (o.channels() == 4) cv::cvtColor(o, originalRgba_, cv::COLOR_BGRA2RGBA);
+    }
+
     dirty_ = false;
     emit dirtyChanged(false);
     pendingFit_ = true;
     rebuildVisualization();
     if (width() > 0 && height() > 0) fitToWindow();
     update();
+}
+
+void OcViewWidget::setPresetIndex(int i)
+{
+    if (i < 0 || i >= int(presets_.size()) || i == presetIndex_) return;
+    prevPresetIndex_ = presetIndex_;
+    presetIndex_ = i;
+    rebuildVisualization();
+    update();
+    emit presetChanged(presetIndex_);
+}
+
+void OcViewWidget::swapWithPrevPreset()
+{
+    if (prevPresetIndex_ == presetIndex_) return;
+    setPresetIndex(prevPresetIndex_);
+}
+
+void OcViewWidget::buildDefaultPresets()
+{
+    presets_.clear();
+    auto add = [&](const char* name, ViewPreset::Background bg,
+                   QColor c0, QColor c1, QColor c2, QColor c3,
+                   QColor c4, QColor c5, QColor c6, QColor c7) {
+        ViewPreset p;
+        p.name = QString::fromUtf8(name);
+        p.bg = bg;
+        p.cells[0]=c0; p.cells[1]=c1; p.cells[2]=c2; p.cells[3]=c3;
+        p.cells[4]=c4; p.cells[5]=c5; p.cells[6]=c6; p.cells[7]=c7;
+        presets_.push_back(std::move(p));
+    };
+    const QColor T(0, 0, 0, 0);  // transparent
+    const QColor BLK  (0,   0,   0,   255);
+    const QColor RED  (220, 0,   0,   255);
+    const QColor GRN  (0,   180, 0,   255);
+    const QColor YEL  (180, 180, 0,   220);
+    const QColor RSEM (220, 0,   0,   180);
+
+    // Cell index = (in1<<2)|(in2<<1)|out
+    //              0      1      2      3      4      5      6      7
+    add("Standard",                ViewPreset::Background::White,
+        T,     BLK,   RED,   BLK,   GRN,   BLK,   YEL,   BLK);
+    add("Original + result red",   ViewPreset::Background::Original,
+        T,     RSEM,  T,     RSEM,  T,     RSEM,  T,     RSEM);
+    add("Original + diff",         ViewPreset::Background::Original,
+        T,     T,     RED,   RED,   GRN,   GRN,   YEL,   YEL);
+    add("Gray source + diff",      ViewPreset::Background::GraySource,
+        T,     T,     RED,   RED,   GRN,   GRN,   YEL,   YEL);
+    add("Result only",             ViewPreset::Background::White,
+        T,     BLK,   T,     BLK,   T,     BLK,   T,     BLK);
 }
 
 void OcViewWidget::setConn8(bool on)
@@ -74,54 +141,68 @@ int OcViewWidget::colorAt(int x, int y) const
     return 0;                        // white (none)
 }
 
+int OcViewWidget::cellAt(int x, int y) const
+{
+    const int in1 = o1_.at<uchar>(y, x) ? 1 : 0;
+    const int in2 = o2_.at<uchar>(y, x) ? 1 : 0;
+    const int out = out_.at<uchar>(y, x) ? 1 : 0;
+    return (in1 << 2) | (in2 << 1) | out;
+}
+
+QRgb OcViewWidget::composePixel(int x, int y) const
+{
+    const ViewPreset& p = presets_[presetIndex_];
+    // Background pixel.
+    int br = 255, bg = 255, bb = 255;
+    switch (p.bg) {
+        case ViewPreset::Background::White:
+            br = bg = bb = 255; break;
+        case ViewPreset::Background::Black:
+            br = bg = bb = 0;   break;
+        case ViewPreset::Background::GraySource: {
+            const uchar g = src_.at<uchar>(y, x);
+            br = bg = bb = g;   break;
+        }
+        case ViewPreset::Background::Original:
+            if (!originalRgba_.empty()) {
+                const cv::Vec4b& v = originalRgba_.at<cv::Vec4b>(y, x);
+                br = v[0]; bg = v[1]; bb = v[2];
+            } else {
+                const uchar g = src_.at<uchar>(y, x);
+                br = bg = bb = g;
+            }
+            break;
+    }
+    // Foreground from cell table.
+    const QColor& fg = p.cells[cellAt(x, y)];
+    const int fa = fg.alpha();
+    if (fa == 0) return qRgba(br, bg, bb, 255);
+    const int fr = fg.red(), fgr = fg.green(), fbl = fg.blue();
+    const int r = (fr * fa + br * (255 - fa)) / 255;
+    const int g = (fgr * fa + bg * (255 - fa)) / 255;
+    const int b = (fbl * fa + bb * (255 - fa)) / 255;
+    return qRgba(r, g, b, 255);
+}
+
 void OcViewWidget::rebuildVisualization()
 {
     if (src_.empty()) { vis_ = {}; return; }
     const int rows = src_.rows, cols = src_.cols;
-    cv::Mat rgba(rows, cols, CV_8UC4);
+    QImage img(cols, rows, QImage::Format_RGBA8888);
     for (int y = 0; y < rows; ++y) {
-        const uchar* sr = src_.ptr<uchar>(y);
-        const uchar* o1 = o1_.ptr<uchar>(y);
-        const uchar* o2 = o2_.ptr<uchar>(y);
-        const uchar* oo = out_.ptr<uchar>(y);
-        cv::Vec4b* dr = rgba.ptr<cv::Vec4b>(y);
+        QRgb* dr = reinterpret_cast<QRgb*>(img.scanLine(y));
         for (int x = 0; x < cols; ++x) {
-            const bool in1 = o1[x], in2 = o2[x], inOut = oo[x];
-            cv::Vec4b c;
-            if (inOut)            c = cv::Vec4b(0,   0,   0,   255);  // black
-            else if (in1 && in2)  c = cv::Vec4b(180, 180, 0,   220);  // dark yellow
-            else if (in1)         c = cv::Vec4b(0,   180, 0,   255);  // green
-            else if (in2)         c = cv::Vec4b(220, 0,   0,   255);  // red
-            else {
-                // white background with a slight gray hint (to see the outlines)
-                const uchar g = sr[x];
-                c = cv::Vec4b(g, g, g, 255);
-            }
-            dr[x] = c;
+            dr[x] = composePixel(x, y);
         }
     }
-    vis_ = QImage(rgba.data, cols, rows, int(rgba.step),
-                  QImage::Format_RGBA8888).copy();
+    vis_ = img;
 }
 
 void OcViewWidget::updateVisualizationAt(const std::vector<cv::Point>& pts)
 {
     if (vis_.isNull()) return;
     for (const auto& p : pts) {
-        const int x = p.x, y = p.y;
-        const bool in1 = o1_.at<uchar>(y, x);
-        const bool in2 = o2_.at<uchar>(y, x);
-        const bool inOut = out_.at<uchar>(y, x);
-        QRgb c;
-        if (inOut)            c = qRgba(0,   0,   0,   255);
-        else if (in1 && in2)  c = qRgba(180, 180, 0,   220);
-        else if (in1)         c = qRgba(0,   180, 0,   255);
-        else if (in2)         c = qRgba(220, 0,   0,   255);
-        else {
-            const uchar g = src_.at<uchar>(y, x);
-            c = qRgba(g, g, g, 255);
-        }
-        vis_.setPixel(x, y, c);
+        vis_.setPixel(p.x, p.y, composePixel(p.x, p.y));
     }
 }
 

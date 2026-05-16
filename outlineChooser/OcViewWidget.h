@@ -6,6 +6,9 @@
 #include <QPoint>
 #include <QPointF>
 #include <opencv2/opencv.hpp>
+#include <vector>
+
+#include "ViewPreset.h"
 
 class OcViewWidget : public QWidget {
     Q_OBJECT
@@ -16,13 +19,22 @@ public:
     // setOutline1/2: file-format outline (0=line, 255=bg) → internally inverted
     // outFileFmt: optional existing result outline; if empty, output starts
     // from the intersection of o1 and o2.
+    // original: optional BGR/BGRA/gray cv::Mat used by ORIGINAL background.
     void setData(const cv::Mat& srcGray,
                  const cv::Mat& o1FileFmt,
                  const cv::Mat& o2FileFmt,
-                 const cv::Mat& outFileFmt = cv::Mat());
+                 const cv::Mat& outFileFmt = cv::Mat(),
+                 const cv::Mat& original = cv::Mat());
     void setConn8(bool on);
     bool hasData() const { return !src_.empty(); }
+    bool hasOriginal() const { return !originalRgba_.empty(); }
     bool dirty() const { return dirty_; }
+
+    // View presets (background + per-cell color table).
+    const std::vector<ViewPreset>& presets() const { return presets_; }
+    int  presetIndex() const { return presetIndex_; }
+    void setPresetIndex(int i);
+    void swapWithPrevPreset();
 
     // returns output mask in file format (0=line, 255=bg)
     cv::Mat outputFileFmt() const;
@@ -34,6 +46,7 @@ public:
 signals:
     void hudUpdate(const QString& s);
     void dirtyChanged(bool dirty);
+    void presetChanged(int index);
 
 protected:
     void paintEvent(QPaintEvent* e) override;
@@ -58,17 +71,25 @@ private:
     cv::Point pickClosestNear(int cx, int cy, int radius) const;
 
     int  colorAt(int x, int y) const;   // 0=white,1=green,2=red,3=yellow,4=black
+    int  cellAt(int x, int y) const;    // 0..7 = (in1<<2)|(in2<<1)|out
+    QRgb composePixel(int x, int y) const;
+    void buildDefaultPresets();
     void floodSegment(int x0, int y0, int wantedColor,
                       std::vector<cv::Point>& out) const;
     void floodAnyColor(int x0, int y0, std::vector<cv::Point>& out) const;
 
-    cv::Mat src_;        // CV_8UC1, gray
-    cv::Mat o1_;         // CV_8UC1, 0/255 (255=line, internal)
-    cv::Mat o2_;         // CV_8UC1, 0/255
-    cv::Mat out_;        // CV_8UC1, 0/255 (255=in result)
-    QImage  vis_;        // RGBA visualization
+    cv::Mat src_;          // CV_8UC1, gray
+    cv::Mat o1_;           // CV_8UC1, 0/255 (255=line, internal)
+    cv::Mat o2_;           // CV_8UC1, 0/255
+    cv::Mat out_;          // CV_8UC1, 0/255 (255=in result)
+    cv::Mat originalRgba_; // CV_8UC4 RGBA, resized to src_; empty = none
+    QImage  vis_;          // RGBA visualization (composed)
     bool    conn8_ = true;
     bool    dirty_ = false;
+
+    std::vector<ViewPreset> presets_;
+    int presetIndex_ = 0;
+    int prevPresetIndex_ = 0;
 
     double  scale_ = 1.0;
     QPointF panOffset_{0, 0};

@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
+#include <QComboBox>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -15,6 +16,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QShortcut>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QStatusBar>
@@ -23,6 +25,9 @@
 #include <QWidget>
 
 #include <opencv2/imgcodecs.hpp>
+
+#include "OriginalLoader.h"
+#include "ViewPreset.h"
 
 OcMainWindow::OcMainWindow(QWidget* parent) : QMainWindow(parent)
 {
@@ -72,6 +77,13 @@ void OcMainWindow::createUi()
     conn8Cb_->setChecked(true);
     conn8Cb_->setToolTip("Connectivity for segment flood-fill");
     tb->addWidget(conn8Cb_);
+    tb->addSeparator();
+    tb->addWidget(new QLabel("View:"));
+    presetCb_ = new QComboBox();
+    presetCb_->setToolTip("View preset — press 1..N or Tab to swap with previous");
+    for (const auto& p : view_->presets()) presetCb_->addItem(p.name);
+    presetCb_->setCurrentIndex(view_->presetIndex());
+    tb->addWidget(presetCb_);
 
     auto* mFile = menuBar()->addMenu("&File");
     auto* aNewProj  = mFile->addAction("&New project...");
@@ -118,6 +130,25 @@ void OcMainWindow::createUi()
 
     connect(view_, &OcViewWidget::hudUpdate, this, &OcMainWindow::onHud);
     connect(view_, &OcViewWidget::dirtyChanged, this, &OcMainWindow::onDirtyChanged);
+
+    connect(presetCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int i) { view_->setPresetIndex(i); });
+    connect(view_, &OcViewWidget::presetChanged, this, [this](int i) {
+        if (presetCb_->currentIndex() != i) {
+            QSignalBlocker b(presetCb_);
+            presetCb_->setCurrentIndex(i);
+        }
+    });
+
+    // Digit shortcuts 1..N for presets, Tab to swap with previous.
+    const int nPresets = int(view_->presets().size());
+    for (int i = 0; i < nPresets && i < 9; ++i) {
+        auto* sc = new QShortcut(QKeySequence(Qt::Key_1 + i), this);
+        connect(sc, &QShortcut::activated, this, [this, i]{ view_->setPresetIndex(i); });
+    }
+    auto* scTab = new QShortcut(QKeySequence(Qt::Key_Tab), this);
+    scTab->setContext(Qt::ApplicationShortcut);
+    connect(scTab, &QShortcut::activated, this, [this]{ view_->swapWithPrevPreset(); });
 }
 
 void OcMainWindow::rebuildRecentMenu()
@@ -279,7 +310,12 @@ bool OcMainWindow::loadProjectIndex(int idx)
     if (!project_.outputDir.isEmpty()) {
         existingOut = readGray(QDir(project_.outputDir).filePath(name));
     }
-    view_->setData(g, o1, o2, existingOut);
+    cv::Mat original;
+    if (!project_.originalDir.isEmpty()) {
+        const QString stem = QFileInfo(name).completeBaseName();
+        original = loadOriginalForStem(project_.originalDir, stem);
+    }
+    view_->setData(g, o1, o2, existingOut, original);
     fileIndex_ = idx;
     currentPath_ = src;
     updateFileLabel();
