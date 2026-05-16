@@ -201,7 +201,8 @@ bool OcMainWindow::createNewProjectAt(const QString& path)
     const ProjectConfig nc = dlg.config();
     if (!nc.isValid()) {
         QMessageBox::warning(this, "New project",
-            "Source, Outlines 1 and Outlines 2 must point to existing directories.");
+            "Source, Outlines 1, Outlines 2 must point to existing directories, "
+            "and Output must be set.");
         return false;
     }
     if (!nc.save(path)) {
@@ -343,11 +344,6 @@ bool OcMainWindow::doSave()
 void OcMainWindow::autoSaveIfPossible()
 {
     if (!view_->dirty()) return;
-    if (project_.outputDir.isEmpty()) {
-        statusBar()->showMessage(
-            "No output dir set — changes not saved. Set project dirs.", 5000);
-        return;
-    }
     if (!doSave()) {
         statusBar()->showMessage("Auto-save failed.", 5000);
     }
@@ -357,11 +353,6 @@ void OcMainWindow::onSave()
 {
     if (!view_->dirty()) {
         statusBar()->showMessage("Nothing to save.", 2000);
-        return;
-    }
-    if (project_.outputDir.isEmpty()) {
-        QMessageBox::warning(this, "Save",
-            "No output directory configured — open File → Set project dirs...");
         return;
     }
     if (doSave()) statusBar()->showMessage("Saved.", 2000);

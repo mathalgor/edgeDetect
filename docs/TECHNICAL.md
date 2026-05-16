@@ -387,8 +387,9 @@ the user pick which segments end up in the merged output.
 ```
 
 All three of `sourceDir`, `outlines1Dir`, `outlines2Dir` are required for
-`isValid()`. `outputDir` may be empty/non-existent initially — it's created
-on first save.
+`isValid()` and must exist on disk. `outputDir` is also required (so the
+auto-save path always has somewhere to write) but it does **not** need to
+exist yet — it's created on first save.
 
 ### 4.2 Source files
 

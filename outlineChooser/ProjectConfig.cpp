@@ -8,9 +8,12 @@
 
 bool ProjectConfig::isValid() const
 {
+    // outputDir is required but does not need to exist yet — it's created
+    // on first save. The three input directories must exist.
     return !sourceDir.isEmpty()    && QDir(sourceDir).exists()
         && !outlines1Dir.isEmpty() && QDir(outlines1Dir).exists()
-        && !outlines2Dir.isEmpty() && QDir(outlines2Dir).exists();
+        && !outlines2Dir.isEmpty() && QDir(outlines2Dir).exists()
+        && !outputDir.isEmpty();
 }
 
 bool ProjectConfig::load(const QString& path)

@@ -5,7 +5,7 @@
 
 struct ProjectConfig {
     QString sourceDir;       // multi-canny gray
-    QString outputDir;       // resulting outline (may be empty at start)
+    QString outputDir;       // resulting outline; required, created on first save
     QString outlines1Dir;
     QString outlines2Dir;
     QString originalDir;     // optional
