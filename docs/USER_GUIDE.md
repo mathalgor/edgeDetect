@@ -84,7 +84,9 @@ the **Recent projects** submenu.
 * Image list is alphabetical inside Source.
 * **Page Up / Page Down** or the ◀ / ▶ buttons — previous / next file.
 * The spinbox in the toolbar — jump to image *n*.
-* `Ctrl+E` — jump to the first source without a saved outline.
+* `Ctrl+E` (cannyToOutline) — jump to the first source without a saved
+  outline.
+* `Ctrl+E` (outlineChooser) — jump to the first file not marked Done.
 
 Switching files prompts to save if the current outline has unsaved changes.
 

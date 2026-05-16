@@ -75,10 +75,14 @@ void OcMainWindow::createUi()
     tb->addSeparator();
     aPrev_ = tb->addAction("◀");
     aNext_ = tb->addAction("▶");
+    aFirstNotDone_ = tb->addAction("▶?");
+    aFirstNotDone_->setToolTip("Go to first file not marked Done");
     aPrev_->setShortcut(QKeySequence(Qt::Key_PageUp));
     aNext_->setShortcut(QKeySequence(Qt::Key_PageDown));
+    aFirstNotDone_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     aPrev_->setEnabled(false);
     aNext_->setEnabled(false);
+    aFirstNotDone_->setEnabled(false);
     fileSpin_ = new QSpinBox();
     fileSpin_->setRange(0, 0);
     fileSpin_->setKeyboardTracking(false);
@@ -164,6 +168,7 @@ void OcMainWindow::createUi()
     connect(aQuit,     &QAction::triggered, this, &QMainWindow::close);
     connect(aPrev_,    &QAction::triggered, this, &OcMainWindow::onPrevFile);
     connect(aNext_,    &QAction::triggered, this, &OcMainWindow::onNextFile);
+    connect(aFirstNotDone_, &QAction::triggered, this, &OcMainWindow::onFirstNotDone);
     connect(aFit,      &QAction::triggered, this, &OcMainWindow::onFit);
     connect(aOne,      &QAction::triggered, this, &OcMainWindow::onOneToOne);
     connect(conn8Cb_,  &QCheckBox::toggled, this, &OcMainWindow::onConn8Toggled);
@@ -543,6 +548,7 @@ void OcMainWindow::scanProject()
     const bool en = haveProject && !fileList_.isEmpty();
     aPrev_->setEnabled(en);
     aNext_->setEnabled(en);
+    aFirstNotDone_->setEnabled(en);
     fileSpin_->setEnabled(en);
     guard_ = true;
     fileSpin_->setRange(fileList_.isEmpty() ? 0 : 1,
@@ -640,6 +646,22 @@ void OcMainWindow::onNextFile()
 {
     if (fileIndex_ < 0 || fileIndex_ >= fileList_.size() - 1) return;
     loadProjectIndex(fileIndex_ + 1);
+}
+
+void OcMainWindow::onFirstNotDone()
+{
+    if (fileList_.isEmpty()) return;
+    int target = -1;
+    for (int i = 0; i < fileList_.size(); ++i) {
+        if (!tracker_.isDone(fileList_[i])) { target = i; break; }
+    }
+    if (target < 0) {
+        statusBar()->showMessage("All files are marked Done.", 3000);
+        return;
+    }
+    if (target == fileIndex_) return;
+    autoSaveIfPossible();
+    loadProjectIndex(target);
 }
 
 void OcMainWindow::onFit()      { view_->fitToWindow(); }

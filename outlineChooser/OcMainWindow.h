@@ -39,6 +39,7 @@ private slots:
     void onSave();
     void onPrevFile();
     void onNextFile();
+    void onFirstNotDone();
     void onFit();
     void onOneToOne();
     void onConn8Toggled(bool on);
@@ -71,6 +72,7 @@ private:
     QLabel* timeLabel_ = nullptr;
     QAction* aPrev_ = nullptr;
     QAction* aNext_ = nullptr;
+    QAction* aFirstNotDone_ = nullptr;
     QAction* aUndo_ = nullptr;
     QAction* aRedo_ = nullptr;
     QAction* aAllowGrayEdit_ = nullptr;
