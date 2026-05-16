@@ -14,9 +14,12 @@ public:
 
     // setSource: gray (CV_8UC1)
     // setOutline1/2: file-format outline (0=line, 255=bg) → internally inverted
+    // outFileFmt: optional existing result outline; if empty, output starts
+    // from the intersection of o1 and o2.
     void setData(const cv::Mat& srcGray,
                  const cv::Mat& o1FileFmt,
-                 const cv::Mat& o2FileFmt);
+                 const cv::Mat& o2FileFmt,
+                 const cv::Mat& outFileFmt = cv::Mat());
     void setConn8(bool on);
     bool hasData() const { return !src_.empty(); }
     bool dirty() const { return dirty_; }

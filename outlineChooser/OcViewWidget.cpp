@@ -14,7 +14,8 @@ OcViewWidget::OcViewWidget(QWidget* parent) : QWidget(parent)
 
 void OcViewWidget::setData(const cv::Mat& srcGray,
                            const cv::Mat& o1FileFmt,
-                           const cv::Mat& o2FileFmt)
+                           const cv::Mat& o2FileFmt,
+                           const cv::Mat& outFileFmt)
 {
     src_ = srcGray.clone();
     auto invert = [&](const cv::Mat& fileFmt) -> cv::Mat {
@@ -31,8 +32,12 @@ void OcViewWidget::setData(const cv::Mat& srcGray,
     };
     o1_ = invert(o1FileFmt);
     o2_ = invert(o2FileFmt);
-    // output starts from the common part
-    cv::bitwise_and(o1_, o2_, out_);
+    if (outFileFmt.empty()) {
+        // No saved result yet — output starts from the intersection of o1 and o2.
+        cv::bitwise_and(o1_, o2_, out_);
+    } else {
+        out_ = invert(outFileFmt);
+    }
     dirty_ = false;
     emit dirtyChanged(false);
     pendingFit_ = true;
@@ -81,7 +86,7 @@ void OcViewWidget::rebuildVisualization()
             const bool in1 = o1[x], in2 = o2[x], inOut = oo[x];
             cv::Vec4b c;
             if (inOut)            c = cv::Vec4b(0,   0,   0,   255);  // black
-            else if (in1 && in2)  c = cv::Vec4b(255, 220, 0,   255);  // yellow
+            else if (in1 && in2)  c = cv::Vec4b(180, 180, 0,   220);  // dark yellow
             else if (in1)         c = cv::Vec4b(0,   180, 0,   255);  // green
             else if (in2)         c = cv::Vec4b(220, 0,   0,   255);  // red
             else {
@@ -106,7 +111,7 @@ void OcViewWidget::updateVisualizationAt(const std::vector<cv::Point>& pts)
         const bool inOut = out_.at<uchar>(y, x);
         QRgb c;
         if (inOut)            c = qRgba(0,   0,   0,   255);
-        else if (in1 && in2)  c = qRgba(255, 220, 0,   255);
+        else if (in1 && in2)  c = qRgba(180, 180, 0,   220);
         else if (in1)         c = qRgba(0,   180, 0,   255);
         else if (in2)         c = qRgba(220, 0,   0,   255);
         else {

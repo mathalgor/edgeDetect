@@ -275,7 +275,11 @@ bool OcMainWindow::loadProjectIndex(int idx)
     }
     cv::Mat o1 = readGray(QDir(project_.outlines1Dir).filePath(name));
     cv::Mat o2 = readGray(QDir(project_.outlines2Dir).filePath(name));
-    view_->setData(g, o1, o2);
+    cv::Mat existingOut;
+    if (!project_.outputDir.isEmpty()) {
+        existingOut = readGray(QDir(project_.outputDir).filePath(name));
+    }
+    view_->setData(g, o1, o2, existingOut);
     fileIndex_ = idx;
     currentPath_ = src;
     updateFileLabel();
