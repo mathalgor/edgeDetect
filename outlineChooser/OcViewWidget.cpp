@@ -388,6 +388,10 @@ void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
     const QPoint d = e->pos() - pressPos_;
     if (d.x()*d.x() + d.y()*d.y() > 9) { update(); return; }
 
+    // Edits require Ctrl. A bare click is purely for panning and must
+    // never modify the result — too easy to fire accidentally otherwise.
+    if (!(e->modifiers() & Qt::ControlModifier)) return;
+
     if (vis_.isNull()) return;
     const ViewPreset& preset = presets_[presetIndex_];
     if (!preset.isEditable()) return;   // current preset is display-only
@@ -395,12 +399,12 @@ void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
     int ix = int(std::floor(ip.x())), iy = int(std::floor(ip.y()));
     if (ix < 0 || iy < 0 || ix >= src_.cols || iy >= src_.rows) return;
 
-    // Ctrl: if click landed on white background, search the nearest seedable
+    // If the click landed on white background, snap to the nearest seedable
     // pixel within a radius of 8 widget pixels (in image pixels at current
     // zoom). In a GraySource preset, gray-edge pixels (src<255) also count
-    // as candidates — so a Ctrl click near a gray edge can snap to it for
-    // the gray-edit branch instead of jumping to a stray outline pixel.
-    if ((e->modifiers() & Qt::ControlModifier) && colorAt(ix, iy) == 0) {
+    // as candidates so the gray-edit branch can be reached via the tolerance
+    // ring instead of jumping to a stray outline pixel.
+    if (colorAt(ix, iy) == 0) {
         const bool includeGray =
             (preset.bg == ViewPreset::Background::GraySource);
         const int r = std::max(1, int(std::round(8.0 / std::max(scale_, 0.01))));

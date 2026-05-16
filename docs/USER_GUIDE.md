@@ -250,11 +250,14 @@ view to decide which extras to bring in.
 
 ### Editing
 
-There's just one gesture: **click**.
+There's just one gesture: **Ctrl + click**.
 
-* Mouse drag pans.
-* A click that doesn't move the cursor more than 3 px is treated as a real
-  click.
+* A bare click without Ctrl always pans / does nothing — this prevents
+  accidental edits while you scroll around the image.
+* Hold **Ctrl** and the cursor immediately switches to the pick cursor
+  with a dotted tolerance ring.
+* A Ctrl-click that doesn't move the cursor more than 3 px is treated
+  as an edit.
 
 Lookup depends on the color under the click:
 
@@ -267,9 +270,11 @@ Lookup depends on the color under the click:
   include.
 * **White / Original photo** (no source line here) — no-op.
 
-Hold **Ctrl** and the cursor switches to the pick cursor (tolerance ring).
-If your click lands on the background, the **nearest non-white pixel**
-within `round(8 / zoom)` image pixels is taken as the seed.
+If your Ctrl-click lands on the background, the **nearest seedable pixel**
+within `round(8 / zoom)` image pixels is taken as the seed. In a
+gray-source preset, gray edges (`src<255`) also count as seedable, so the
+tolerance ring can snap to a gray edge for the advanced "click on gray"
+edit.
 
 The **8-conn** toolbar checkbox toggles between 4- and 8-connected
 flood-fill.

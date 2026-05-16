@@ -525,13 +525,18 @@ pixels touched by a flood-fill — both paths therefore stay consistent.
 Mouse drag pans. The click is only consumed when the cursor didn't move
 (>3 px = treated as pan).
 
-Editing is gated by **preset content**, not by preset index — the
+Edits require **Ctrl** to be held at release time. A bare click never
+modifies `out_` — too easy to fire accidentally while panning. Pressing
+Ctrl swaps the cursor to the pick cursor (tolerance ring) immediately
+via `keyPressEvent` / `updateCursorForMods`.
+
+Editing is also gated by **preset content** — the
 `ViewPreset::isEditable()` helper returns true iff the preset both
 `showsResult()` (at least one `out=1` cell with α>0) and shows at least
 one outline candidate outside the result (`showsO1Outside()` or
 `showsO2Outside()`, i.e. cell 2/4/6 with α>0). In a preset that fails
 the test, `mouseReleaseEvent` returns immediately and the click acts
-purely as a pan-cleanup.
+purely as a pan-cleanup, even with Ctrl held.
 
 * When Ctrl is **held** the cursor changes to the pick cursor (tolerance
   ring). On click, if the exact pixel is white, search a radius of
