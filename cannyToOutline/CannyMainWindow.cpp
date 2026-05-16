@@ -3,9 +3,14 @@
 #include "ProjectDialog.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QDir>
+#include <QEvent>
+#include <QKeyEvent>
 #include <QKeySequence>
+#include <QMouseEvent>
 #include <QShortcut>
+#include <QSizePolicy>
 #include <QStandardItemModel>
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -32,6 +37,7 @@
 #include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 #include <QWidget>
 
 #include <opencv2/imgcodecs.hpp>
@@ -121,6 +127,7 @@ bool CannyMainWindow::loadProjectFromPath(const QString& path)
     appConfig_.save();
     rebuildRecentMenu();
     updateTitle();
+    tracker_.bindToProject(QFileInfo(path).absoluteFilePath());
     scanProject();
     return true;
 }
@@ -292,6 +299,17 @@ void CannyMainWindow::createUi()
     auto* aFit  = tb->addAction("Fit");
     auto* aOne  = tb->addAction("1:1");
 
+    auto* tbSpacer = new QWidget();
+    tbSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tb->addWidget(tbSpacer);
+
+    doneBtn_ = new QPushButton("Done");
+    doneBtn_->setCheckable(true);
+    doneBtn_->setToolTip("Mark this file as done (click to toggle)");
+    tb->addWidget(doneBtn_);
+    updateDoneButton(false);
+
+
     auto* mFile = menuBar()->addMenu("&File");
     auto* aNewProj  = mFile->addAction("&New project...");
     auto* aOpenProj = mFile->addAction("&Open project...");
@@ -331,6 +349,9 @@ void CannyMainWindow::createUi()
     // --- status ---
     fileLabel_ = new QLabel("(no project)");
     statusBar()->addWidget(fileLabel_);
+    timeLabel_ = new QLabel();
+    timeLabel_->setToolTip("Active time spent on this file");
+    statusBar()->addPermanentWidget(timeLabel_);
     hudLabel_ = new QLabel();
     statusBar()->addPermanentWidget(hudLabel_);
 
@@ -391,6 +412,19 @@ void CannyMainWindow::createUi()
     connect(view_, &CannyViewWidget::rectSelectionFinished, this, &CannyMainWindow::onRectSelectionFinished);
     connect(view_, &CannyViewWidget::analysisReady,         this, &CannyMainWindow::onAnalysisReady);
 
+    // Time tracking
+    qApp->installEventFilter(this);
+    connect(&tracker_, &TimeTracker::tick, this,
+            [this](const QString&, qint64 s) {
+        timeLabel_->setText("Time: " + TimeTracker::formatHMS(s));
+    });
+    connect(doneBtn_, &QPushButton::toggled, this, [this](bool on) {
+        if (!currentPath_.isEmpty()) {
+            tracker_.setDone(QFileInfo(currentPath_).fileName(), on);
+        }
+        updateDoneButton(on);
+    });
+
     connect(minSizeSpin_,   QOverload<int>::of(&QSpinBox::valueChanged),
             this, &CannyMainWindow::onMinSizeChanged);
     connect(minExtentSpin_, QOverload<int>::of(&QSpinBox::valueChanged),
@@ -433,7 +467,39 @@ void CannyMainWindow::onOpen()
 void CannyMainWindow::closeEvent(QCloseEvent* e)
 {
     if (dirty_) doSave();   // silent auto-save; no prompt
+    tracker_.flush();
     e->accept();
+}
+
+bool CannyMainWindow::eventFilter(QObject* obj, QEvent* e)
+{
+    switch (e->type()) {
+        case QEvent::KeyPress:
+        case QEvent::MouseButtonPress:
+        case QEvent::Wheel:
+            tracker_.registerActivity();
+            break;
+        default: break;
+    }
+    return QMainWindow::eventFilter(obj, e);
+}
+
+void CannyMainWindow::updateDoneButton(bool done)
+{
+    if (!doneBtn_) return;
+    QSignalBlocker b(doneBtn_);
+    doneBtn_->setChecked(done);
+    if (done) {
+        doneBtn_->setText("Done ✓");
+        doneBtn_->setStyleSheet(
+            "QPushButton{background-color:#2a8a2a;color:white;"
+            "padding:4px 14px;border:1px solid #1f6f1f;border-radius:4px;}");
+    } else {
+        doneBtn_->setText("Not done");
+        doneBtn_->setStyleSheet(
+            "QPushButton{background-color:#c33;color:white;"
+            "padding:4px 14px;border:1px solid #911;border-radius:4px;}");
+    }
 }
 
 bool CannyMainWindow::maybeSave()
@@ -493,6 +559,10 @@ bool CannyMainWindow::loadFile(const QString& path)
     redoStack_.clear();
     dirty_ = false;
     updateUndoActions();
+    const QString name = QFileInfo(path).fileName();
+    tracker_.setCurrentFile(name);
+    updateDoneButton(tracker_.isDone(name));
+    timeLabel_->setText("Time: " + TimeTracker::formatHMS(tracker_.secondsFor(name)));
 
     // if there is an outline file alongside — load it
     const QString op = defaultOutlinePath();

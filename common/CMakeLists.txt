@@ -7,6 +7,8 @@ add_library(edgeDetectCommon STATIC
         CursorUtils.h
         OriginalLoader.cpp
         OriginalLoader.h
+        TimeTracker.cpp
+        TimeTracker.h
         ViewPreset.h
 )
 

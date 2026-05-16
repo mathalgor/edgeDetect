@@ -8,20 +8,26 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDir>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMouseEvent>
+#include <QPushButton>
 #include <QShortcut>
+#include <QSizePolicy>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 #include <QWidget>
 
 #include <opencv2/imgcodecs.hpp>
@@ -85,6 +91,17 @@ void OcMainWindow::createUi()
     presetCb_->setCurrentIndex(view_->presetIndex());
     tb->addWidget(presetCb_);
 
+    // Expanding spacer pushes Done button to the right edge.
+    auto* spacer = new QWidget();
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tb->addWidget(spacer);
+
+    doneBtn_ = new QPushButton("Done");
+    doneBtn_->setCheckable(true);
+    doneBtn_->setToolTip("Mark this file as done (click to toggle)");
+    updateDoneButton(false);
+    tb->addWidget(doneBtn_);
+
     auto* mFile = menuBar()->addMenu("&File");
     auto* aNewProj  = mFile->addAction("&New project...");
     auto* aOpenProj = mFile->addAction("&Open project...");
@@ -106,6 +123,9 @@ void OcMainWindow::createUi()
 
     fileLabel_ = new QLabel("(no project)");
     statusBar()->addWidget(fileLabel_);
+    timeLabel_ = new QLabel();
+    timeLabel_->setToolTip("Active time spent on this file");
+    statusBar()->addPermanentWidget(timeLabel_);
     hudLabel_ = new QLabel();
     statusBar()->addPermanentWidget(hudLabel_);
 
@@ -151,6 +171,50 @@ void OcMainWindow::createUi()
     auto* scTab = new QShortcut(QKeySequence(Qt::Key_Tab), this);
     scTab->setContext(Qt::ApplicationShortcut);
     connect(scTab, &QShortcut::activated, this, [this]{ view_->swapWithPrevPreset(); });
+
+    // Time tracking: register activity from key/mouse-button/wheel events.
+    qApp->installEventFilter(this);
+    connect(&tracker_, &TimeTracker::tick, this,
+            [this](const QString&, qint64 s) {
+        timeLabel_->setText("Time: " + TimeTracker::formatHMS(s));
+    });
+    connect(doneBtn_, &QPushButton::toggled, this, [this](bool on) {
+        if (!currentPath_.isEmpty()) {
+            tracker_.setDone(QFileInfo(currentPath_).fileName(), on);
+        }
+        updateDoneButton(on);
+    });
+}
+
+void OcMainWindow::updateDoneButton(bool done)
+{
+    if (!doneBtn_) return;
+    QSignalBlocker b(doneBtn_);
+    doneBtn_->setChecked(done);
+    if (done) {
+        doneBtn_->setText("Done ✓");
+        doneBtn_->setStyleSheet(
+            "QPushButton{background-color:#2a8a2a;color:white;"
+            "padding:4px 14px;border:1px solid #1f6f1f;border-radius:4px;}");
+    } else {
+        doneBtn_->setText("Not done");
+        doneBtn_->setStyleSheet(
+            "QPushButton{background-color:#c33;color:white;"
+            "padding:4px 14px;border:1px solid #911;border-radius:4px;}");
+    }
+}
+
+bool OcMainWindow::eventFilter(QObject* obj, QEvent* e)
+{
+    switch (e->type()) {
+        case QEvent::KeyPress:
+        case QEvent::MouseButtonPress:
+        case QEvent::Wheel:
+            tracker_.registerActivity();
+            break;
+        default: break;
+    }
+    return QMainWindow::eventFilter(obj, e);
 }
 
 void OcMainWindow::rebuildRecentMenu()
@@ -190,6 +254,7 @@ bool OcMainWindow::loadProjectFromPath(const QString& path)
     appConfig_.save();
     rebuildRecentMenu();
     updateTitle();
+    tracker_.bindToProject(QFileInfo(path).absoluteFilePath());
     scanProject();
     return true;
 }
@@ -321,6 +386,9 @@ bool OcMainWindow::loadProjectIndex(int idx)
     view_->setData(g, o1, o2, existingOut, original);
     fileIndex_ = idx;
     currentPath_ = src;
+    tracker_.setCurrentFile(name);
+    updateDoneButton(tracker_.isDone(name));
+    timeLabel_->setText("Time: " + TimeTracker::formatHMS(tracker_.secondsFor(name)));
     updateFileLabel();
     updateTitle();
     return true;
@@ -410,6 +478,7 @@ void OcMainWindow::updateTitle()
 void OcMainWindow::closeEvent(QCloseEvent* e)
 {
     autoSaveIfPossible();
+    tracker_.flush();
     appConfig_.save();
     QMainWindow::closeEvent(e);
 }

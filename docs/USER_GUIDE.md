@@ -283,7 +283,42 @@ designed for hand-curation of a few hard cases.
 * **Outline PNG** — 1-bit PNG. `0` = line, `255` = background. Both GUIs
   invert this on read/write — the in-memory convention is the opposite.
 
-## 6. Config
+## 6. Time tracking and "Done"
+
+Both GUIs measure how long you actually work on each file and let you
+mark a file as done.
+
+* The **Done** button in the top right of the toolbar is red when the
+  current file is not done and green with a check mark when it is.
+  Click toggles. Setting "Done" is purely informational — it doesn't
+  affect editing, saving, or navigation.
+* The status bar shows **Time: MM:SS** (or `H:MM:SS` for long sessions),
+  updated every second.
+* "Activity" that counts: key presses, mouse-button presses, mouse wheel.
+  Plain mouse moves do **not** count, so just resting the cursor over the
+  window doesn't inflate the timer.
+* If you don't do anything for **60 seconds** the timer effectively
+  pauses — the gap up to that point still counts (it's a tolerance
+  window), but seconds beyond it are skipped until you act again.
+
+Both pieces of state are saved per project in
+`$XDG_CONFIG_HOME/edgeDetect/<appName>/projects/<projectStem>.<hash>.times.json`:
+
+```json
+{
+  "projectPath": "/abs/path/to/foo.ocproj",
+  "idleSeconds": 60,
+  "files": {
+    "001.png": { "seconds": 134, "done": true },
+    "002.png": { "seconds":  28, "done": false }
+  }
+}
+```
+
+Persisted automatically every minute and on file/project switch and on
+close — so a crash costs you at most ~1 minute of timer data.
+
+## 7. Config
 
 Each app writes one JSON file in
 `$XDG_CONFIG_HOME/edgeDetect/<appName>/<appName>.json` with:
@@ -293,3 +328,7 @@ Each app writes one JSON file in
 
 Project files (`*.ctoprj`, `*.ocproj`) are plain JSON — safe to hand-edit
 if a path needs updating.
+
+Per-project time tracking and Done state live in
+`projects/<projectStem>.<hash>.times.json` next to the main app config
+(see §6).

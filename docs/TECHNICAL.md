@@ -45,6 +45,7 @@ edgeDetect/
 │   ├── AppConfig.{h,cpp}       # MRU + last-project JSON (per-app filename)
 │   ├── CursorUtils.{h,cpp}     # makePickCursor(radiusPx)
 │   ├── OriginalLoader.{h,cpp}  # stem-based image lookup for "originalDir"
+│   ├── TimeTracker.{h,cpp}     # per-file active-time + Done flag, JSON-backed
 │   └── ViewPreset.h            # struct used by outlineChooser
 ├── toMultiCanny/           # CLI; class Canny (prepare/apply split, 256x reuse)
 ├── cannyToOutline/         # GUI
@@ -101,6 +102,35 @@ everywhere in the algorithms.
 Per-project JSON, user picks the filename. Distinct extensions:
 * `cannyToOutline` → `*.ctoprj`
 * `outlineChooser` → `*.ocproj`
+
+### Time-tracking JSON
+
+Each GUI keeps a side file per project for active-time accounting and
+the per-file "Done" flag, at:
+
+```
+$XDG_CONFIG_HOME/edgeDetect/<appName>/projects/<projectStem>.<8hex>.times.json
+```
+
+The `<8hex>` is the first 8 hex chars of `md5(absolute project path)`,
+so two projects with the same stem don't collide. Shape:
+
+```json
+{
+  "projectPath": "...",
+  "idleSeconds": 60,
+  "files": {
+    "001.png": { "seconds": 134, "done": true }
+  }
+}
+```
+
+Driven by `common::TimeTracker`. Activity comes from a main-window
+`eventFilter` that matches only `KeyPress` / `MouseButtonPress` / `Wheel`
+events — plain mouse moves never bump the activity stamp. A 1 s tick
+adds a second only when the last activity is within `idleSeconds` (60 by
+default) of "now". Persisted on a 60 s flush timer plus on file switch,
+project switch, and `closeEvent`.
 
 ---
 

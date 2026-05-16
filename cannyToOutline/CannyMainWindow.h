@@ -10,12 +10,14 @@
 #include <opencv2/core.hpp>
 #include "AppConfig.h"
 #include "ProjectConfig.h"
+#include "TimeTracker.h"
 
 class QCloseEvent;
 
 class QAction;
 class QLabel;
 class QMenu;
+class QPushButton;
 class QSlider;
 class QSpinBox;
 class QCheckBox;
@@ -33,6 +35,7 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* e) override;
+    bool eventFilter(QObject* obj, QEvent* e) override;
 
 private slots:
     void onOpen();
@@ -93,9 +96,13 @@ private:
     QSpinBox*  joinTolSpin_   = nullptr;
     QCheckBox* allDarkerCb_   = nullptr;
     QCheckBox* conn8Cb_       = nullptr;
+    QPushButton* doneBtn_     = nullptr;
     QLabel*    statsLabel_    = nullptr;
 
     QLabel*    hudLabel_ = nullptr;
+    QLabel*    timeLabel_ = nullptr;
+    TimeTracker tracker_;
+    void updateDoneButton(bool done);
 
     QAction*   aUndo_ = nullptr;
     QAction*   aRedo_ = nullptr;

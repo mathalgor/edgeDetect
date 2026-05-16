@@ -7,12 +7,14 @@
 
 #include "AppConfig.h"
 #include "ProjectConfig.h"
+#include "TimeTracker.h"
 
 class QAction;
 class QCheckBox;
 class QComboBox;
 class QLabel;
 class QMenu;
+class QPushButton;
 class QSpinBox;
 class OcViewWidget;
 
@@ -23,6 +25,7 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* e) override;
+    bool eventFilter(QObject* obj, QEvent* e) override;
 
 private slots:
     void onNewProject();
@@ -55,12 +58,17 @@ private:
     OcViewWidget* view_ = nullptr;
     QLabel* fileLabel_ = nullptr;
     QLabel* hudLabel_  = nullptr;
+    QLabel* timeLabel_ = nullptr;
     QAction* aPrev_ = nullptr;
     QAction* aNext_ = nullptr;
     QSpinBox* fileSpin_ = nullptr;
     QCheckBox* conn8Cb_ = nullptr;
     QComboBox* presetCb_ = nullptr;
+    QPushButton* doneBtn_ = nullptr;
     QMenu* recentMenu_ = nullptr;
+
+    TimeTracker tracker_;
+    void updateDoneButton(bool done);
 
     AppConfig     appConfig_;
     ProjectConfig project_;
