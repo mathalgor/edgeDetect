@@ -1,4 +1,5 @@
 #include "CannyViewWidget.h"
+#include "CursorUtils.h"
 
 #include <QPainter>
 #include <QMouseEvent>
@@ -1256,33 +1257,7 @@ cv::Point CannyViewWidget::pickClosestNear(const cv::Point& p, int radius) const
 
 cv::Point CannyViewWidget::pickSeedNear(const cv::Point& p, int radius) const
 {
-    if (scale_ >= 1.0) return pickClosestNear(p, radius);
-    return pickDarkestNear(p, radius);
-}
-
-cv::Point CannyViewWidget::pickDarkestNear(const cv::Point& p, int radius) const
-{
-    if (src_.empty()) return {-1, -1};
-    int best = 256;
-    cv::Point r(-1, -1);
-    int bestD2 = INT_MAX;
-    const int y0 = std::max(0, p.y - radius), y1 = std::min(src_.rows - 1, p.y + radius);
-    const int x0 = std::max(0, p.x - radius), x1 = std::min(src_.cols - 1, p.x + radius);
-    for (int y = y0; y <= y1; ++y) {
-        const uchar* row = src_.ptr<uchar>(y);
-        for (int x = x0; x <= x1; ++x) {
-            const int v = row[x];
-            if (v >= 255) continue;
-            if (!passesFilter(x, y)) continue;
-            const int d2 = (x - p.x)*(x - p.x) + (y - p.y)*(y - p.y);
-            if (v < best || (v == best && d2 < bestD2)) {
-                best = v;
-                bestD2 = d2;
-                r = cv::Point(x, y);
-            }
-        }
-    }
-    return r;
+    return pickClosestNear(p, radius);
 }
 
 bool CannyViewWidget::hasOutline() const
@@ -1644,48 +1619,10 @@ void CannyViewWidget::floodSelectSameValue(const cv::Point& seed, int joinTol, b
     selDirty_ = true;
 }
 
-QCursor CannyViewWidget::buildPickCursor() const
-{
-    // visual tolerance in widget pixels
-    const int r = 8;
-    // canvas larger than the arrow to fit the circle and head
-    const int W = 48, H = 48;
-    // hotspot = arrow tip = center of the little circle
-    const QPoint hot(16, 16);
-
-    QPixmap pm(W, H);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing, true);
-
-    // vertical-slanted arrow up-left (tip at hot)
-    QPolygon arrow;
-    arrow << hot
-          << QPoint(hot.x() + 1,  hot.y() + 14)
-          << QPoint(hot.x() + 5,  hot.y() + 11)
-          << QPoint(hot.x() + 9,  hot.y() + 16)
-          << QPoint(hot.x() + 11, hot.y() + 14)
-          << QPoint(hot.x() + 7,  hot.y() + 9)
-          << QPoint(hot.x() + 11, hot.y() + 7);
-    p.setPen(QPen(Qt::black, 1));
-    p.setBrush(Qt::white);
-    p.drawPolygon(arrow);
-
-    // tolerance circle around the tip
-    p.setBrush(Qt::NoBrush);
-    p.setPen(QPen(QColor(0, 0, 0, 220), 1));
-    p.drawEllipse(hot, r, r);
-    p.setPen(QPen(QColor(255, 255, 0, 220), 1, Qt::DotLine));
-    p.drawEllipse(hot, r, r);
-    p.end();
-
-    return QCursor(pm, hot.x(), hot.y());
-}
-
 void CannyViewWidget::updateCursorForMods(Qt::KeyboardModifiers m)
 {
     if (panning_) { setCursor(Qt::ClosedHandCursor); return; }
-    if (m & Qt::ControlModifier) setCursor(buildPickCursor());
+    if (m & Qt::ControlModifier) setCursor(makePickCursor());
     else if (m & Qt::ShiftModifier) setCursor(Qt::CrossCursor);
     else setCursor(Qt::OpenHandCursor);
 }
@@ -1791,13 +1728,10 @@ void CannyViewWidget::mousePressEvent(QMouseEvent* e)
                 seed = click;
                 add = false;
             } else if (clickedOnPassing) {
-                // click directly on a matching pixel → add (do not search outline)
+                // Click directly on a matching pixel → add (do not search outline).
+                // Always use the clicked pixel; no darkest-near search.
                 seed = click;
                 add = true;
-                if (r > 0 && scale_ < 4.0) {
-                    cv::Point alt = pickDarkestNear(seed, r);
-                    if (alt.x >= 0 && src_.at<uchar>(alt) < src_.at<uchar>(seed)) seed = alt;
-                }
             } else {
                 // click on "empty" — search in radius for both candidates, pick the closer one
                 cv::Point cOut  = pickOutlineNear(click, r);

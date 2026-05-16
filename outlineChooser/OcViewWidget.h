@@ -42,6 +42,8 @@ protected:
     void mousePressEvent(QMouseEvent* e) override;
     void mouseMoveEvent(QMouseEvent* e) override;
     void mouseReleaseEvent(QMouseEvent* e) override;
+    void keyPressEvent(QKeyEvent* e) override;
+    void keyReleaseEvent(QKeyEvent* e) override;
     void leaveEvent(QEvent* e) override;
 
 private:
@@ -51,6 +53,9 @@ private:
     void emitHud(const QPoint& widgetPos);
     void rebuildVisualization();        // rebuild the entire vis_
     void updateVisualizationAt(const std::vector<cv::Point>& pts);
+    void updateCursorForMods(Qt::KeyboardModifiers m);
+    // Nearest non-white pixel within radius (image pixels). Returns (-1,-1) if none.
+    cv::Point pickClosestNear(int cx, int cy, int radius) const;
 
     int  colorAt(int x, int y) const;   // 0=white,1=green,2=red,3=yellow,4=black
     void floodSegment(int x0, int y0, int wantedColor,

@@ -115,8 +115,6 @@ private:
     void applyZoomAt(const QPoint& anchor, double factor);
     void emitHud(const QPoint& widgetPos);
     void updateCursorForMods(Qt::KeyboardModifiers m);
-    QCursor buildPickCursor() const;
-    cv::Point pickDarkestNear(const cv::Point& p, int radius) const;
     cv::Point pickClosestNear(const cv::Point& p, int radius) const;
     cv::Point pickSeedNear(const cv::Point& p, int radius) const;
     cv::Point pickOutlineNear(const cv::Point& p, int radius) const;

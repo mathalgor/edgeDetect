@@ -1,8 +1,11 @@
 #include "OcViewWidget.h"
+#include "CursorUtils.h"
 
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QWheelEvent>
+#include <climits>
 #include <vector>
 
 OcViewWidget::OcViewWidget(QWidget* parent) : QWidget(parent)
@@ -263,17 +266,6 @@ void OcViewWidget::mousePressEvent(QMouseEvent* e)
     setFocus();
     if (e->button() != Qt::LeftButton) return;
     if (vis_.isNull()) return;
-    const QPointF ip = widgetToImage(e->pos());
-    const int ix = int(std::floor(ip.x())), iy = int(std::floor(ip.y()));
-    if (ix < 0 || iy < 0 || ix >= src_.cols || iy >= src_.rows) {
-        panning_ = true;
-        lastMousePos_ = e->pos();
-        pressPos_ = e->pos();
-        panOffsetAtPress_ = panOffset_;
-        setCursor(Qt::ClosedHandCursor);
-        return;
-    }
-    // potential click on a colored pixel — we'll check on release
     panning_ = true;
     lastMousePos_ = e->pos();
     pressPos_ = e->pos();
@@ -288,6 +280,8 @@ void OcViewWidget::mouseMoveEvent(QMouseEvent* e)
         panOffset_ += QPointF(d);
         lastMousePos_ = e->pos();
         update();
+    } else {
+        updateCursorForMods(e->modifiers());
     }
     emitHud(e->pos());
 }
@@ -295,18 +289,25 @@ void OcViewWidget::mouseMoveEvent(QMouseEvent* e)
 void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
 {
     if (e->button() != Qt::LeftButton) return;
-    const bool wasPanning = panning_;
     panning_ = false;
-    setCursor(Qt::ArrowCursor);
+    updateCursorForMods(e->modifiers());
     // click without movement (>3 px = pan)
     const QPoint d = e->pos() - pressPos_;
     if (d.x()*d.x() + d.y()*d.y() > 9) { update(); return; }
-    (void)wasPanning;
 
     if (vis_.isNull()) return;
     const QPointF ip = widgetToImage(e->pos());
-    const int ix = int(std::floor(ip.x())), iy = int(std::floor(ip.y()));
+    int ix = int(std::floor(ip.x())), iy = int(std::floor(ip.y()));
     if (ix < 0 || iy < 0 || ix >= src_.cols || iy >= src_.rows) return;
+
+    // Ctrl: if click landed on white background, search the nearest non-white
+    // pixel within a radius of 8 widget pixels (in image pixels at current zoom).
+    if ((e->modifiers() & Qt::ControlModifier) && colorAt(ix, iy) == 0) {
+        const int r = std::max(1, int(std::round(8.0 / std::max(scale_, 0.01))));
+        const cv::Point near = pickClosestNear(ix, iy, r);
+        if (near.x < 0) return;
+        ix = near.x; iy = near.y;
+    }
 
     const int c = colorAt(ix, iy);
     if (c == 0) return;  // white — do nothing
@@ -327,6 +328,46 @@ void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
         if (!dirty_) { dirty_ = true; emit dirtyChanged(true); }
         update();
     }
+}
+
+void OcViewWidget::keyPressEvent(QKeyEvent* e)
+{
+    if (e->key() == Qt::Key_Control) updateCursorForMods(e->modifiers() | Qt::ControlModifier);
+    QWidget::keyPressEvent(e);
+}
+
+void OcViewWidget::keyReleaseEvent(QKeyEvent* e)
+{
+    if (e->key() == Qt::Key_Control) updateCursorForMods(e->modifiers() & ~Qt::ControlModifier);
+    QWidget::keyReleaseEvent(e);
+}
+
+void OcViewWidget::updateCursorForMods(Qt::KeyboardModifiers m)
+{
+    if (panning_) { setCursor(Qt::ClosedHandCursor); return; }
+    if (m & Qt::ControlModifier) setCursor(makePickCursor());
+    else setCursor(Qt::ArrowCursor);
+}
+
+cv::Point OcViewWidget::pickClosestNear(int cx, int cy, int radius) const
+{
+    if (src_.empty()) return {-1, -1};
+    const int y0 = std::max(0, cy - radius), y1 = std::min(src_.rows - 1, cy + radius);
+    const int x0 = std::max(0, cx - radius), x1 = std::min(src_.cols - 1, cx + radius);
+    int bestD2 = INT_MAX;
+    cv::Point r(-1, -1);
+    const int r2 = radius * radius;
+    for (int y = y0; y <= y1; ++y) {
+        const uchar* o1 = o1_.ptr<uchar>(y);
+        const uchar* o2 = o2_.ptr<uchar>(y);
+        for (int x = x0; x <= x1; ++x) {
+            if (!o1[x] && !o2[x]) continue;     // white — no candidate color here
+            const int d2 = (x - cx)*(x - cx) + (y - cy)*(y - cy);
+            if (d2 > r2) continue;
+            if (d2 < bestD2) { bestD2 = d2; r = cv::Point(x, y); }
+        }
+    }
+    return r;
 }
 
 void OcViewWidget::leaveEvent(QEvent*)
