@@ -47,13 +47,9 @@ public:
     // patch the visualization, mark dirty.
     void applyOp(const std::vector<cv::Point>& pts, bool add);
 
-    // Advanced editing: allow click on a gray edge pixel (cell 0 with
-    // src < 255) to add that whole same-value segment to the result.
-    // Only meaningful with a GraySource-background preset.
-    void setAllowGrayEdit(bool on) { allowGrayEdit_ = on; }
-    bool allowGrayEdit() const { return allowGrayEdit_; }
-    // Performs the gray-edit at (x,y) unconditionally. Used by MainWindow
-    // after the user confirms the enabling dialog.
+    // Advanced editing: click on a gray edge pixel (cell 0 with src < 255)
+    // adds that whole same-value segment to the result. Only meaningful in
+    // a GraySource-background preset.
     void performGrayEditAt(int x, int y);
 
     // Shift rect/strip selection ----------------------------------------
@@ -67,7 +63,7 @@ public:
     void cancelRectSelection();
     bool hasPendingRect() const { return !lastPolyMask_.empty(); }
     // True when a rect/strip Gray-color commit would be meaningful here
-    // (allowGrayEdit_ is on and the active preset has a GraySource bg).
+    // (active preset has a GraySource background).
     bool grayCandidateAvailable() const;
     // Recomputes the live preview (blue = will be added, dark yellow =
     // eligible component but threshold rejects). Called by MainWindow
@@ -81,10 +77,6 @@ signals:
     // Emitted after a click edit. `pts` are the pixels that actually
     // changed; `add` is true for include-segment, false for remove-segment.
     void editOp(std::vector<cv::Point> pts, bool add);
-    // Emitted when the user clicks a gray candidate but allowGrayEdit_
-    // is false. MainWindow shows a confirmation dialog and on Yes calls
-    // setAllowGrayEdit(true) + performGrayEditAt(x, y).
-    void grayEditRequested(int x, int y);
     // Emitted after a Shift-drag rect or Shift-click strip has been
     // captured. MainWindow opens the candidate dialog; on accept it
     // calls commitRectSelection() with the chosen parameters, on cancel
@@ -145,7 +137,6 @@ private:
     QImage  vis_;          // RGBA visualization (composed)
     bool    conn8_ = true;
     bool    dirty_ = false;
-    bool    allowGrayEdit_ = false;
 
     // Same-value components over src_; built by analyzeComponents() in
     // setData(). labels_[0] = background (src >= 255); other labels index

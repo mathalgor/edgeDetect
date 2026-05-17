@@ -48,7 +48,6 @@ private slots:
     void onEditOp(std::vector<cv::Point> pts, bool add);
     void onUndo();
     void onRedo();
-    void onGrayEditRequested(int x, int y);
     void onRectSelectionFinished();
 
 private:
@@ -75,7 +74,6 @@ private:
     QAction* aFirstNotDone_ = nullptr;
     QAction* aUndo_ = nullptr;
     QAction* aRedo_ = nullptr;
-    QAction* aAllowGrayEdit_ = nullptr;
     QDialog* rectDialog_ = nullptr;
     int  lastRectThreshold_ = 240;
     int  lastCandidateMode_ = 0;   // 0=Touching, 1=Inside

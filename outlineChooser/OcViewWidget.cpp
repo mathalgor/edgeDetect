@@ -125,7 +125,6 @@ void OcViewWidget::analyzeComponents()
 
 bool OcViewWidget::grayCandidateAvailable() const
 {
-    if (!allowGrayEdit_) return false;
     if (presetIndex_ < 0 || presetIndex_ >= int(presets_.size())) return false;
     return presets_[presetIndex_].bg == ViewPreset::Background::GraySource;
 }
@@ -805,12 +804,11 @@ void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
 
     const int c = colorAt(ix, iy);
     if (c == 0) {
-        // Cell 0 — no outline pixel here. Offer the "click on gray"
-        // advanced edit only when the preset uses the gray source as its
-        // background (so the user actually sees what they're clicking).
+        // Cell 0 — no outline pixel here. The "click on gray" edit is only
+        // meaningful in a preset with a gray-source background (so the
+        // user actually sees what they're clicking).
         if (preset.bg != ViewPreset::Background::GraySource) return;
         if (src_.empty() || src_.at<uchar>(iy, ix) >= 255) return;
-        if (!allowGrayEdit_) { emit grayEditRequested(ix, iy); return; }
         performGrayEditAt(ix, iy);
         return;
     }
