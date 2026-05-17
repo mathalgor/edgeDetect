@@ -429,7 +429,13 @@ void OcViewWidget::buildDefaultPresets()
 
 void OcViewWidget::setConn8(bool on)
 {
+    if (conn8_ == on) return;
     conn8_ = on;
+    if (src_.empty()) return;
+    // Components feed the rect Inside/Touching grouping — rebuild them.
+    // A live rect preview becomes stale; drop it so the user redraws.
+    analyzeComponents();
+    if (previewActive_ || !lastPolyMask_.empty()) cancelRectSelection();
 }
 
 cv::Mat OcViewWidget::outputFileFmt() const
