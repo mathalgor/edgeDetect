@@ -11,6 +11,8 @@ struct AppConfig {
     QString currentProjectPath;
     QStringList recentProjects;
     int mruSize = 20;
+    QString lastDatasetRoot;
+    QString lastDatasetSplit = "train";
 
     static QString configPath();
     bool load();

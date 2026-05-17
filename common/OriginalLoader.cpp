@@ -5,7 +5,7 @@
 #include <QStringList>
 #include <opencv2/imgcodecs.hpp>
 
-cv::Mat loadOriginalForStem(const QString& dir, const QString& stem)
+QString findOriginalPathForStem(const QString& dir, const QString& stem)
 {
     if (dir.isEmpty() || stem.isEmpty()) return {};
     QDir od(dir);
@@ -14,16 +14,19 @@ cv::Mat loadOriginalForStem(const QString& dir, const QString& stem)
     static const QStringList kExts = {
         ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"
     };
-    QString found;
     for (const QString& e : kExts) {
         const QString cand = od.filePath(stem + e);
-        if (QFileInfo::exists(cand)) { found = cand; break; }
+        if (QFileInfo::exists(cand)) return cand;
     }
-    if (found.isEmpty()) {
-        const QStringList list = od.entryList(QStringList{stem + ".*"},
-                                              QDir::Files, QDir::Name);
-        if (!list.isEmpty()) found = od.filePath(list.first());
-    }
-    if (found.isEmpty()) return {};
-    return cv::imread(found.toStdString(), cv::IMREAD_UNCHANGED);
+    const QStringList list = od.entryList(QStringList{stem + ".*"},
+                                          QDir::Files, QDir::Name);
+    if (!list.isEmpty()) return od.filePath(list.first());
+    return {};
+}
+
+cv::Mat loadOriginalForStem(const QString& dir, const QString& stem)
+{
+    const QString path = findOriginalPathForStem(dir, stem);
+    if (path.isEmpty()) return {};
+    return cv::imread(path.toStdString(), cv::IMREAD_UNCHANGED);
 }

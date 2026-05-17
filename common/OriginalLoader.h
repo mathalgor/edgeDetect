@@ -9,4 +9,7 @@
 // raw cv::Mat (BGR/BGRA/gray). Returns empty Mat if not found or dir invalid.
 cv::Mat loadOriginalForStem(const QString& dir, const QString& stem);
 
+// Same lookup logic, but returns the absolute path (or empty if none).
+QString findOriginalPathForStem(const QString& dir, const QString& stem);
+
 #endif

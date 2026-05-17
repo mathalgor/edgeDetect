@@ -49,6 +49,7 @@ private slots:
     void onUndo();
     void onRedo();
     void onRectSelectionFinished();
+    void onExportToDataset();
 
 private:
     void createUi();

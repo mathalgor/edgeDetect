@@ -12,12 +12,15 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QEvent>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFormLayout>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLineEdit>
 #include <QLocale>
 #include <QMenu>
 #include <QMenuBar>
@@ -28,6 +31,7 @@
 #include <QSizePolicy>
 #include <QSpinBox>
 #include <QStandardPaths>
+#include <QStyle>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QVBoxLayout>
@@ -147,6 +151,8 @@ void OcMainWindow::createUi()
         ProjectTimeDialog dlg(&tracker_, fileList_, this);
         dlg.exec();
     });
+    auto* aExport = mTools->addAction("&Export to dataset...");
+    connect(aExport, &QAction::triggered, this, &OcMainWindow::onExportToDataset);
 
     fileLabel_ = new QLabel("(no project)");
     statusBar()->addWidget(fileLabel_);
@@ -629,6 +635,140 @@ void OcMainWindow::onFirstNotDone()
     if (target == fileIndex_) return;
     autoSaveIfPossible();
     loadProjectIndex(target);
+}
+
+void OcMainWindow::onExportToDataset()
+{
+    if (fileList_.isEmpty()) {
+        QMessageBox::information(this, "Export to dataset",
+            "No files in the project.");
+        return;
+    }
+    if (project_.originalDir.isEmpty() || project_.outputDir.isEmpty()) {
+        QMessageBox::warning(this, "Export to dataset",
+            "Project must have both originalDir and outputDir configured.");
+        return;
+    }
+
+    // -------- dialog --------
+    QDialog dlg(this);
+    dlg.setWindowTitle("Export to dataset");
+
+    auto* pathEdit = new QLineEdit(&dlg);
+    pathEdit->setText(appConfig_.lastDatasetRoot);
+    pathEdit->setPlaceholderText("dataset root (will be created if missing)");
+    pathEdit->setMinimumWidth(400);
+
+    auto* browseBtn = new QPushButton(&dlg);
+    browseBtn->setIcon(style()->standardIcon(QStyle::SP_DirIcon));
+    browseBtn->setToolTip("Choose folder…");
+    connect(browseBtn, &QPushButton::clicked, &dlg, [&]() {
+        const QString start = pathEdit->text().isEmpty()
+            ? QDir::homePath() : pathEdit->text();
+        const QString d = QFileDialog::getExistingDirectory(
+            &dlg, "Dataset root", start);
+        if (!d.isEmpty()) pathEdit->setText(d);
+    });
+
+    auto* splitCb = new QComboBox(&dlg);
+    splitCb->addItem("train");
+    splitCb->addItem("test");
+    if (appConfig_.lastDatasetSplit == "test") splitCb->setCurrentIndex(1);
+
+    auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    auto* form = new QFormLayout;
+    auto* pathRow = new QHBoxLayout;
+    pathRow->addWidget(pathEdit, 1);
+    pathRow->addWidget(browseBtn);
+    auto* pathRowWidget = new QWidget(&dlg);
+    pathRowWidget->setLayout(pathRow);
+    form->addRow("Dataset root:", pathRowWidget);
+    form->addRow("Split:", splitCb);
+
+    auto* lay = new QVBoxLayout(&dlg);
+    lay->addLayout(form);
+    lay->addWidget(bb);
+
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    const QString root  = pathEdit->text().trimmed();
+    const QString split = splitCb->currentText();
+    if (root.isEmpty()) return;
+
+    appConfig_.lastDatasetRoot  = root;
+    appConfig_.lastDatasetSplit = split;
+    appConfig_.save();
+
+    // -------- target dirs --------
+    const QString rgbDir = QDir(root).filePath(split + "/rgb");
+    const QString maskDir = (split == "train")
+        ? QDir(root).filePath("train/mask/real")
+        : QDir(root).filePath("test/mask");
+    QDir().mkpath(rgbDir);
+    QDir().mkpath(maskDir);
+
+    // -------- iterate Done files --------
+    int doneCount = 0, copiedRgb = 0, copiedMask = 0;
+    int skipNoOrig = 0, skipNoMask = 0;
+    bool skipAllMissing = false;
+    bool aborted = false;
+
+    auto handleMissing = [&](const QString& what, const QString& name) -> int {
+        // returns: 0 = skip this, 1 = abort
+        if (skipAllMissing) return 0;
+        QMessageBox box(QMessageBox::Warning, "Missing " + what,
+            QString("Missing %1 for '%2'.\n\nSkip this file, skip all missing, or abort?")
+                .arg(what, name),
+            QMessageBox::NoButton, this);
+        auto* skipBtn = box.addButton("Skip", QMessageBox::AcceptRole);
+        auto* skipAllBtn = box.addButton("Skip all missing", QMessageBox::AcceptRole);
+        auto* abortBtn = box.addButton("Abort", QMessageBox::RejectRole);
+        box.setDefaultButton(skipBtn);
+        box.exec();
+        if (box.clickedButton() == abortBtn) return 1;
+        if (box.clickedButton() == skipAllBtn) skipAllMissing = true;
+        return 0;
+    };
+
+    for (const QString& name : fileList_) {
+        if (!tracker_.isDone(name)) continue;
+        ++doneCount;
+
+        const QString stem = QFileInfo(name).completeBaseName();
+        const QString origPath = findOriginalPathForStem(project_.originalDir, stem);
+        const QString maskPath = QDir(project_.outputDir).filePath(name);
+        const bool hasOrig = !origPath.isEmpty() && QFileInfo::exists(origPath);
+        const bool hasMask = QFileInfo::exists(maskPath);
+
+        if (!hasOrig) {
+            ++skipNoOrig;
+            if (handleMissing("original RGB", name) == 1) { aborted = true; break; }
+            continue;
+        }
+        if (!hasMask) {
+            ++skipNoMask;
+            if (handleMissing("outline mask", name) == 1) { aborted = true; break; }
+            continue;
+        }
+
+        const QString rgbDst = QDir(rgbDir).filePath(QFileInfo(origPath).fileName());
+        const QString maskDst = QDir(maskDir).filePath(name);
+        QFile::remove(rgbDst);
+        QFile::remove(maskDst);
+        if (QFile::copy(origPath, rgbDst))  ++copiedRgb;
+        if (QFile::copy(maskPath, maskDst)) ++copiedMask;
+    }
+
+    QString msg;
+    msg += QString("Exported %1 RGB + %2 masks (of %3 Done files).\n")
+        .arg(copiedRgb).arg(copiedMask).arg(doneCount);
+    msg += QString("Skipped: %1 (no original), %2 (no mask).")
+        .arg(skipNoOrig).arg(skipNoMask);
+    if (aborted) msg += "\n\nExport aborted by user.";
+    QMessageBox::information(this, "Export to dataset", msg);
 }
 
 void OcMainWindow::onFit()      { view_->fitToWindow(); }

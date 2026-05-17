@@ -30,6 +30,8 @@ bool AppConfig::load()
         if (!s.isEmpty()) recentProjects.append(s);
     }
     if (o.contains("mruSize")) mruSize = std::max(1, o.value("mruSize").toInt(20));
+    lastDatasetRoot  = o.value("lastDatasetRoot").toString();
+    lastDatasetSplit = o.value("lastDatasetSplit").toString("train");
     return true;
 }
 
@@ -41,6 +43,8 @@ bool AppConfig::save() const
     for (const auto& s : recentProjects) a.append(s);
     o["recentProjects"] = a;
     o["mruSize"] = mruSize;
+    o["lastDatasetRoot"]  = lastDatasetRoot;
+    o["lastDatasetSplit"] = lastDatasetSplit;
     QDir().mkpath(QFileInfo(configPath()).absolutePath());
     QFile f(configPath());
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
