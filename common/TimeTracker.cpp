@@ -85,12 +85,16 @@ void TimeTracker::commitNow()
 {
     if (currentFile_.isEmpty() || !lastActivity_.isValid()) return;
     const QDateTime now = QDateTime::currentDateTime();
-    const qint64 gapMs = lastActivity_.msecsTo(now);
-    if (gapMs >= 0 && gapMs <= qint64(idleSeconds_) * 1000) {
-        // Within idle window — commit the gap as active time. Round to
-        // nearest whole second so the display matches the saved value.
-        entries_[currentFile_].seconds += (gapMs + 500) / 1000;
-        dirty_ = true;
+    const auto it = entries_.find(currentFile_);
+    const bool done = (it != entries_.end() && it.value().done);
+    if (!done) {
+        const qint64 gapMs = lastActivity_.msecsTo(now);
+        if (gapMs >= 0 && gapMs <= qint64(idleSeconds_) * 1000) {
+            // Within idle window — commit the gap as active time. Round to
+            // nearest whole second so the display matches the saved value.
+            entries_[currentFile_].seconds += (gapMs + 500) / 1000;
+            dirty_ = true;
+        }
     }
     // Either way: anchor "now" so the next gap is measured from here.
     lastActivity_ = now;
@@ -106,6 +110,7 @@ qint64 TimeTracker::liveSecondsFor(const QString& name) const
 {
     qint64 base = secondsFor(name);
     if (name != currentFile_ || !lastActivity_.isValid()) return base;
+    if (isDone(name)) return base;
     const qint64 gapMs = lastActivity_.msecsTo(QDateTime::currentDateTime());
     if (gapMs >= 0 && gapMs <= qint64(idleSeconds_) * 1000) {
         base += gapMs / 1000;
@@ -141,11 +146,19 @@ bool TimeTracker::isDone(const QString& name) const
 void TimeTracker::setDone(const QString& name, bool on)
 {
     if (name.isEmpty()) return;
+    // When marking the current file Done, commit any in-flight gap so it
+    // counts. When un-marking, restart the anchor so the idle gap accrued
+    // while it was Done is not back-filled.
+    if (name == currentFile_) {
+        if (on) commitNow();
+        else    lastActivity_ = {};
+    }
     Entry& e = entries_[name];
     if (e.done == on) return;
     e.done = on;
     dirty_ = true;
     emit doneChanged(name, on);
+    if (name == currentFile_) emit tick(currentFile_, liveSecondsFor(currentFile_));
 }
 
 void TimeTracker::onTick()

@@ -438,6 +438,17 @@ void OcViewWidget::setConn8(bool on)
     if (previewActive_ || !lastPolyMask_.empty()) cancelRectSelection();
 }
 
+void OcViewWidget::setEditLocked(bool on)
+{
+    if (editLocked_ == on) return;
+    editLocked_ = on;
+    if (on) {
+        // Drop any in-progress selection so re-enabling starts clean.
+        if (stripPhase_ != StripPhase::None) cancelStripInProgress();
+        if (rectDragging_ || !lastPolyMask_.empty()) cancelRectSelection();
+    }
+}
+
 cv::Mat OcViewWidget::outputFileFmt() const
 {
     if (out_.empty()) return {};
@@ -727,6 +738,7 @@ void OcViewWidget::mousePressEvent(QMouseEvent* e)
 
     // Shift starts a tentative rect/strip selection (only when editable).
     if (mods & Qt::ShiftModifier) {
+        if (editLocked_) { emit editBlocked(); return; }
         const ViewPreset& preset = presets_[presetIndex_];
         if (!preset.isEditable()) return;
         if (ix < 0 || iy < 0 || ix >= src_.cols || iy >= src_.rows) return;
@@ -807,6 +819,7 @@ void OcViewWidget::mouseReleaseEvent(QMouseEvent* e)
     // Edits require Ctrl. A bare click is purely for panning and must
     // never modify the result — too easy to fire accidentally otherwise.
     if (!(e->modifiers() & Qt::ControlModifier)) return;
+    if (editLocked_) { emit editBlocked(); return; }
 
     if (vis_.isNull()) return;
     const ViewPreset& preset = presets_[presetIndex_];

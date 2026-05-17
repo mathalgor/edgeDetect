@@ -216,6 +216,12 @@ void OcMainWindow::createUi()
             tracker_.setDone(QFileInfo(currentPath_).fileName(), on);
         }
         updateDoneButton(on);
+        view_->setEditLocked(on);
+    });
+
+    connect(view_, &OcViewWidget::editBlocked, this, [this]() {
+        QMessageBox::information(this, "Editing disabled",
+            "This file is marked Done. Disable the Done toggle to edit.");
     });
 }
 
@@ -555,7 +561,9 @@ bool OcMainWindow::loadProjectIndex(int idx)
     currentPath_ = src;
     clearUndoStacks();
     tracker_.setCurrentFile(name);
-    updateDoneButton(tracker_.isDone(name));
+    const bool done = tracker_.isDone(name);
+    updateDoneButton(done);
+    view_->setEditLocked(done);
     timeLabel_->setText("Time: " + TimeTracker::formatHMS(tracker_.secondsFor(name)));
     updateFileLabel();
     updateTitle();

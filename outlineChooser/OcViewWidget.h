@@ -26,6 +26,11 @@ public:
                  const cv::Mat& outFileFmt = cv::Mat(),
                  const cv::Mat& original = cv::Mat());
     void setConn8(bool on);
+    // When true, all edit interactions (Ctrl-click, Shift rect/strip) are
+    // blocked and emit editBlocked() so MainWindow can show a warning.
+    // Used to freeze a file marked Done.
+    void setEditLocked(bool on);
+    bool editLocked() const { return editLocked_; }
     bool hasData() const { return !src_.empty(); }
     bool hasOriginal() const { return !originalRgba_.empty(); }
     bool dirty() const { return dirty_; }
@@ -84,6 +89,9 @@ signals:
     // Emitted after a click edit. `pts` are the pixels that actually
     // changed; `add` is true for include-segment, false for remove-segment.
     void editOp(std::vector<cv::Point> pts, bool add);
+    // Emitted when the user attempts to edit while editLocked_ is on
+    // (file marked Done). MainWindow shows a warning.
+    void editBlocked();
     // Emitted after a Shift-drag rect or Shift-click strip has been
     // captured. MainWindow opens the candidate dialog; on accept it
     // calls commitRectSelection() with the chosen parameters, on cancel
@@ -144,6 +152,7 @@ private:
     QImage  vis_;          // RGBA visualization (composed)
     bool    conn8_ = true;
     bool    dirty_ = false;
+    bool    editLocked_ = false;
 
     // Same-value components over src_; built by analyzeComponents() in
     // setData(). labels_[0] = background (src >= 255); other labels index
