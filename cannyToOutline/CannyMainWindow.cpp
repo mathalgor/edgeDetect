@@ -1,5 +1,6 @@
 #include "CannyMainWindow.h"
 #include "CannyViewWidget.h"
+#include "CountSnapSpinBox.h"
 #include "ProjectDialog.h"
 #include "ProjectTimeDialog.h"
 
@@ -42,37 +43,6 @@
 #include <QWidget>
 
 #include <opencv2/imgcodecs.hpp>
-
-namespace {
-class SnapSpinBox : public QSpinBox {
-public:
-    using QSpinBox::QSpinBox;
-    void setSnap(QVector<int> v) {
-        std::sort(v.begin(), v.end());
-        v.erase(std::unique(v.begin(), v.end()), v.end());
-        snap_ = std::move(v);
-    }
-protected:
-    void stepBy(int steps) override {
-        if (snap_.isEmpty()) { QSpinBox::stepBy(steps); return; }
-        int t = value();
-        const int n = snap_.size();
-        for (int i = 0; i < std::abs(steps); ++i) {
-            // k = index of the largest snap_[k] <= t (or -1)
-            auto it = std::upper_bound(snap_.begin(), snap_.end(), t);
-            const int k = int(it - snap_.begin()) - 1;
-            if (steps > 0) {
-                if (k + 1 < n) t = snap_[k + 1]; else break;
-            } else {
-                if (k - 1 >= 0) t = snap_[k - 1]; else { t = minimum(); break; }
-            }
-        }
-        setValue(std::clamp(t, minimum(), maximum()));
-    }
-private:
-    QVector<int> snap_;
-};
-}
 
 CannyMainWindow::CannyMainWindow(QWidget* parent) : QMainWindow(parent)
 {
@@ -792,17 +762,19 @@ void CannyMainWindow::onRectSelectionFinished()
     dlg->setWindowTitle("Rect threshold");
     dlg->setModal(false);
 
-    auto* sb = new SnapSpinBox(dlg);
+    auto* sb = new CountSnapSpinBox(dlg,
+        [v = view_](int x){ return v->candAddCountIf(x); });
     sb->setRange(0, 254);
-    sb->setSnap(view_->uniqueCandidateValues());
     sb->setValue(lastRectThreshold_);
     sb->setAccelerated(true);
+    sb->setToolTip("Stepping jumps to the next value where the count changes");
 
     auto* modeCb = new QComboBox(dlg);
     modeCb->addItem("Touching (components partially)",     0);
     modeCb->addItem("Inside (components fully)",           1);
     modeCb->setCurrentIndex(lastCandidateMode_);
 
+    auto* countsLbl = new QLabel(dlg);
     auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
 
     auto* lay = new QVBoxLayout(dlg);
@@ -811,18 +783,32 @@ void CannyMainWindow::onRectSelectionFinished()
     lay->addWidget(sb);
     lay->addWidget(new QLabel("candidates:"));
     lay->addWidget(modeCb);
+    lay->addWidget(countsLbl);
     lay->addWidget(bb);
 
     view_->setCandidateMode(modeCb->currentIndex());
     view_->setRectThreshold(sb->value());
 
+    auto refreshCounts = [this, sb, countsLbl]() {
+        const QLocale loc = QLocale::system();
+        const int blue   = view_->candAddCountIf(sb->value());
+        const int yellow = view_->candRejectCountIf(sb->value());
+        countsLbl->setText(
+            QString("adding %1 px,  past threshold %2 px")
+                .arg(loc.toString(blue)).arg(loc.toString(yellow)));
+    };
+    refreshCounts();
+
     connect(modeCb, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, [this, sb](int m) {
+            this, [this, refreshCounts](int m) {
                 view_->setCandidateMode(m);
-                sb->setSnap(view_->uniqueCandidateValues());
+                refreshCounts();
             });
     connect(sb, QOverload<int>::of(&QSpinBox::valueChanged),
-            view_, &CannyViewWidget::setRectThreshold);
+            this, [this, refreshCounts](int v) {
+                view_->setRectThreshold(v);
+                refreshCounts();
+            });
     connect(bb, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
     connect(bb, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
     connect(dlg, &QDialog::accepted, this, [this, sb, modeCb]() {
@@ -1069,33 +1055,6 @@ void CannyMainWindow::onFitToOthers()
     centralSplitter_->setSizes({width() - 180, 180});
 
     fitShowFn_();
-}
-
-namespace {
-class CountSnapSpinBox : public QSpinBox {
-public:
-    using CountFn = std::function<int(int)>;
-    CountSnapSpinBox(QWidget* p, CountFn fn) : QSpinBox(p), fn_(std::move(fn)) {}
-    void stepBy(int steps) override {
-        if (steps == 0 || !fn_) { QSpinBox::stepBy(steps); return; }
-        const int dir = steps > 0 ? 1 : -1;
-        const int n = std::abs(steps);
-        int v = value();
-        const int lo = minimum(), hi = maximum();
-        for (int i = 0; i < n; ++i) {
-            const int c0 = fn_(v);
-            int next = v + dir;
-            while (next >= lo && next <= hi && fn_(next) == c0) next += dir;
-            if (next < lo) next = lo;
-            else if (next > hi) next = hi;
-            if (next == v) break;
-            v = next;
-        }
-        setValue(v);
-    }
-private:
-    CountFn fn_;
-};
 }
 
 void CannyMainWindow::onThresholdTool()

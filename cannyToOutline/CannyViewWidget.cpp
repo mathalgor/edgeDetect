@@ -1429,6 +1429,7 @@ void CannyViewWidget::rebuildCandidatesFromPoly()
         }
     }
     // candMask = pixels of included labels, minus outline, src<255
+    std::fill(std::begin(candHist_), std::end(candHist_), 0);
     for (int y = 0; y < rows; ++y) {
         const int*   lr = labels_.ptr<int>(y);
         const uchar* sr = src_.ptr<uchar>(y);
@@ -1441,8 +1442,27 @@ void CannyViewWidget::rebuildCandidatesFromPoly()
             if (orl && orl[x]) continue;
             if (!passesFilter(x, y)) continue;
             cr[x] = 255;
+            ++candHist_[sr[x]];
         }
     }
+}
+
+int CannyViewWidget::candAddCountIf(int t) const
+{
+    if (candMask_.empty()) return 0;
+    t = std::clamp(t, 0, 255);
+    int s = 0;
+    for (int i = 0; i <= t; ++i) s += candHist_[i];
+    return s;
+}
+
+int CannyViewWidget::candRejectCountIf(int t) const
+{
+    if (candMask_.empty()) return 0;
+    t = std::clamp(t, 0, 255);
+    int s = 0;
+    for (int i = t + 1; i < 256; ++i) s += candHist_[i];
+    return s;
 }
 
 std::vector<cv::Point> CannyViewWidget::stripCorners(

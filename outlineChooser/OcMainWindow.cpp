@@ -1,6 +1,7 @@
 #include "OcMainWindow.h"
 #include "OcViewWidget.h"
 #include "ProjectDialog.h"
+#include "CountSnapSpinBox.h"
 
 #include <QAction>
 #include <QApplication>
@@ -17,6 +18,7 @@
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLocale>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -245,11 +247,13 @@ void OcMainWindow::onRectSelectionFinished()
     dlg->setWindowTitle("Rect threshold");
     dlg->setModal(false);
 
-    auto* sb = new QSpinBox(dlg);
+    auto* sb = new CountSnapSpinBox(dlg,
+        [v = view_](int x){ return v->previewAddCountIf(x); });
     sb->setRange(0, 255);
     sb->setValue(lastRectThreshold_);
     sb->setAccelerated(true);
-    sb->setToolTip("Components with src gray ≤ threshold are eligible");
+    sb->setToolTip("Components with src gray ≤ threshold are eligible. "
+                   "Stepping jumps to the next value where the count changes.");
 
     auto* modeCb = new QComboBox(dlg);
     modeCb->addItem("Touching (components partially)", 0);
@@ -266,6 +270,8 @@ void OcMainWindow::onRectSelectionFinished()
         colorCb->setCurrentIndex(idx >= 0 ? idx : 0);
     }
 
+    auto* countsLbl = new QLabel(dlg);
+
     auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
 
     auto* lay = new QVBoxLayout(dlg);
@@ -276,15 +282,22 @@ void OcMainWindow::onRectSelectionFinished()
     lay->addWidget(modeCb);
     lay->addWidget(new QLabel("Add color:"));
     lay->addWidget(colorCb);
+    lay->addWidget(countsLbl);
     lay->addWidget(bb);
 
-    auto pushPreview = [this, sb, modeCb, colorCb]() {
+    auto pushPreview = [this, sb, modeCb, colorCb, countsLbl]() {
         const auto mode  = (modeCb->currentIndex() == 0)
             ? OcViewWidget::CandMode::Touching
             : OcViewWidget::CandMode::Inside;
         const auto color = static_cast<OcViewWidget::CandColor>(
             colorCb->currentData().toInt());
         view_->setRectPreview(sb->value(), mode, color);
+        const QLocale loc = QLocale::system();
+        const int blue   = view_->previewAddCountIf(sb->value());
+        const int yellow = view_->previewRejectCountIf(sb->value());
+        countsLbl->setText(
+            QString("adding %1 px,  past threshold %2 px")
+                .arg(loc.toString(blue)).arg(loc.toString(yellow)));
     };
     // Initial preview with the current defaults.
     pushPreview();

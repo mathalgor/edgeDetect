@@ -229,6 +229,7 @@ void OcViewWidget::setRectPreview(int threshold, CandMode mode, CandColor color)
     }
     previewBlue_ = cv::Mat::zeros(src_.size(), CV_8UC1);
     previewYellow_ = cv::Mat::zeros(src_.size(), CV_8UC1);
+    std::fill(std::begin(previewHist_), std::end(previewHist_), 0);
     for (int y = 0; y < rows; ++y) {
         const int*   lr = labels_.ptr<int>(y);
         const uchar* o1 = o1_.ptr<uchar>(y);
@@ -247,8 +248,10 @@ void OcViewWidget::setRectPreview(int threshold, CandMode mode, CandColor color)
                 case CandColor::Gray:  match = !o1[x] && !o2[x]; break;
             }
             if (!match) continue;
-            if (labelValue_[L] <= threshold) orng[x] = 255;
-            else                              yelw[x] = 255;
+            const int lv = labelValue_[L];
+            ++previewHist_[lv];
+            if (lv <= threshold) orng[x] = 255;
+            else                  yelw[x] = 255;
         }
     }
     // Compose RGBA image.
@@ -268,6 +271,24 @@ void OcViewWidget::setRectPreview(int threshold, CandMode mode, CandColor color)
                            QImage::Format_RGBA8888).copy();
     previewActive_ = true;
     update();
+}
+
+int OcViewWidget::previewAddCountIf(int t) const
+{
+    if (!previewActive_) return 0;
+    t = std::clamp(t, 0, 255);
+    int s = 0;
+    for (int i = 0; i <= t; ++i) s += previewHist_[i];
+    return s;
+}
+
+int OcViewWidget::previewRejectCountIf(int t) const
+{
+    if (!previewActive_) return 0;
+    t = std::clamp(t, 0, 255);
+    int s = 0;
+    for (int i = t + 1; i < 256; ++i) s += previewHist_[i];
+    return s;
 }
 
 void OcViewWidget::commitRectSelection(int threshold, CandMode mode, CandColor color)

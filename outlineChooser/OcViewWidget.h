@@ -38,7 +38,9 @@ public:
 
     // returns output mask in file format (0=line, 255=bg)
     cv::Mat outputFileFmt() const;
-    void    markSaved() { dirty_ = false; }
+    void    markSaved() {
+        if (dirty_) { dirty_ = false; emit dirtyChanged(false); }
+    }
 
     void fitToWindow();
     void zoomOneToOne();
@@ -69,6 +71,11 @@ public:
     // eligible component but threshold rejects). Called by MainWindow
     // as the dialog values change.
     void setRectPreview(int threshold, CandMode mode, CandColor color);
+    // Counts of preview pixels (blue = added, yellow = rejected) at a
+    // hypothetical threshold, using the eligibility (mode/color) captured
+    // by the last setRectPreview() call.
+    int  previewAddCountIf(int t) const;
+    int  previewRejectCountIf(int t) const;
 
 signals:
     void hudUpdate(const QString& s);
@@ -157,6 +164,7 @@ private:
     cv::Mat    previewYellow_;          // 0/255 — eligible but threshold rejects
     QImage     previewImage_;           // composed RGBA overlay
     bool       previewActive_ = false;
+    int        previewHist_[256] = {0}; // hist of src values over the eligible set
 
     std::vector<ViewPreset> presets_;
     int presetIndex_ = 0;

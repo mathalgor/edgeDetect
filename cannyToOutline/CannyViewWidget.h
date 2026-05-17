@@ -59,6 +59,11 @@ public:
     bool hasRectSelection() const { return rectShowing_; }
     QPoint rectAnchorGlobal() const;  // dialog anchor position (bottom-right corner of rect)
     QVector<int> uniqueCandidateValues() const;  // sorted unique v from candMask_
+    // Counts of rect-candidate pixels (red = added, gray-rejected = past
+    // threshold) at a hypothetical threshold, using the eligibility mask
+    // captured by the last rect selection.
+    int  candAddCountIf(int t) const;
+    int  candRejectCountIf(int t) const;
 
     bool hasOutline() const;
     bool saveOutline(const QString& path) const;  // PNG: 0=line, 255=background
@@ -172,6 +177,7 @@ private:
     cv::Mat candMask_;
     cv::Mat yellowMask_;
     cv::Mat orangeMask_;
+    int     candHist_[256] = {0};  // src-value hist over candMask_
     int     rectThreshold_ = 240;
     QImage  rectOverlayImage_;
     bool    rectOverlayDirty_ = true;
