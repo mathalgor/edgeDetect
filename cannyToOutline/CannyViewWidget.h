@@ -31,6 +31,11 @@ public:
     // The view still pans and zooms normally.
     void setEditEnabled(bool on);
     bool editEnabled() const { return editEnabled_; }
+    // When true, edits (Ctrl-click, Shift rect/strip) are blocked and
+    // editBlocked() is emitted so MainWindow can warn the user. Used to
+    // freeze a file marked Done.
+    void setEditLocked(bool on);
+    bool editLocked() const { return editLocked_; }
     void setMinSize(int n);                  // 0 = disabled
     void setMinExtent(double d);             // 0 = disabled
     void setJoinTol(int tol);                // widens flood-fill by ±tol
@@ -104,6 +109,7 @@ signals:
     void outlineOp(QPoint seed, bool add, int joinTol, bool allDarker, bool conn8);
     void outlineBulkOp(cv::Mat mask, bool add);   // bulk add/remove
     void rectSelectionFinished();            // candidates ready for dialog
+    void editBlocked();                       // user tried to edit while locked (Done)
     void analysisReady();
     void thresholdCountsChanged(int addCount, int removeCount);
 
@@ -156,6 +162,7 @@ private:
     bool blackMode_   = false;
     bool hideDone_    = false;
     bool editEnabled_ = true;
+    bool editLocked_  = false;
 
     cv::Mat labels_;            // CV_32S, 0 = background, same-value 8-conn labels
     std::vector<int> labelSize_;// component size by label index

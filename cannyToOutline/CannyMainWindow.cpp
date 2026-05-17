@@ -400,6 +400,12 @@ void CannyMainWindow::createUi()
             tracker_.setDone(QFileInfo(currentPath_).fileName(), on);
         }
         updateDoneButton(on);
+        view_->setEditLocked(on);
+    });
+
+    connect(view_, &CannyViewWidget::editBlocked, this, [this]() {
+        QMessageBox::information(this, "Editing disabled",
+            "This file is marked Done. Disable the Done toggle to edit.");
     });
 
     connect(minSizeSpin_,   QOverload<int>::of(&QSpinBox::valueChanged),
@@ -538,7 +544,9 @@ bool CannyMainWindow::loadFile(const QString& path)
     updateUndoActions();
     const QString name = QFileInfo(path).fileName();
     tracker_.setCurrentFile(name);
-    updateDoneButton(tracker_.isDone(name));
+    const bool done = tracker_.isDone(name);
+    updateDoneButton(done);
+    view_->setEditLocked(done);
     timeLabel_->setText("Time: " + TimeTracker::formatHMS(tracker_.secondsFor(name)));
 
     // if there is an outline file alongside — load it
