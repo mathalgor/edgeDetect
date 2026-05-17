@@ -18,6 +18,7 @@
 #include <string>
 
 namespace fs = std::filesystem;
+const double UPPER_DENSITY = 25.0;
 
 static bool isImageExt(const std::string& extLower)
 {
@@ -43,9 +44,9 @@ static void gauss3(const cv::Mat& src, cv::Mat& dst)
 // pct -> value 1..255 mapping identical to valFn in onGenerateGray().
 static uchar valFn(double pct)
 {
-    static const double logBlack = std::log10(15.0);
+    static const double logBlack = std::log10(UPPER_DENSITY);
     static const double logWhite = std::log10(0.1);
-    if (pct >= 15.0) return 0;
+    if (pct >= UPPER_DENSITY) return 0;
     if (pct < 0.1)   pct = 0.1;
     double t = (std::log10(pct) - logBlack) / (logWhite - logBlack);
     if (t < 0.0) t = 0.0;
@@ -66,18 +67,18 @@ static void buildGrayMap(const cv::Mat& src8u, cv::Mat& grayResult)
 
     int zeroStreak = 0;
     cv::Mat e;
-    for (int low = 0; low <= 255; ++low) {
-        double high = std::max(1.0, low * 2.5);
+    for (int low = 1; low <= 255; ++low) {
+        double high = low * 2.5;
         int nz = mc.apply(static_cast<double>(low), high, e);
         if (nz == 0) {
-            if (++zeroStreak >= 4) break;
+            if (++zeroStreak >= 3) break;
             continue;
         }
         zeroStreak = 0;
 
         double pct = 100.0 * static_cast<double>(nz) /
                               static_cast<double>(e.total());
-        if (pct >= 15.0) continue;
+        if (pct >= UPPER_DENSITY) continue;
         uchar value = valFn(pct);
         grayResult.setTo(value, e);
     }
@@ -125,7 +126,7 @@ static bool processOne(const fs::path& inPath, const fs::path& outPath, bool inv
     auto tInv1 = clk::now();
 
     const std::vector<int> pngParams = {
-        cv::IMWRITE_PNG_COMPRESSION, 8,   // 0..9, lossless (deflate)
+        cv::IMWRITE_PNG_COMPRESSION, 7,   // 0..9, lossless (deflate)
         cv::IMWRITE_PNG_STRATEGY, cv::IMWRITE_PNG_STRATEGY_DEFAULT
     };
     auto tWrite0 = clk::now();
@@ -146,7 +147,7 @@ static bool processOne(const fs::path& inPath, const fs::path& outPath, bool inv
               << "  gauss=" << ms_since(tGauss0, tGauss1)
               << "  canny(prep+256x)=" << ms_since(tCanny0, tCanny1)
               << "  invert=" << ms_since(tInv0, tInv1)
-              << "  imwrite(png9)=" << ms_since(tWrite0, tWrite1)
+              << "  imwrite(png7)=" << ms_since(tWrite0, tWrite1)
               << "  total=" << total << " ms]\n";
     return true;
 }
