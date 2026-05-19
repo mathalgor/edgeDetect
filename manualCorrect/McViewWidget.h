@@ -132,6 +132,7 @@ private:
     QPoint                 polyHover_;            // last mouse pos in image coords (for rubber line)
     bool                   polyHoverValid_ = false;
     cv::Mat                polyMask_;             // 0/255 mask of closed polygon (empty otherwise)
+    std::vector<cv::Point> closedPolyVerts_;      // outline-display verts for the captured polygon
     std::vector<cv::Point> lastPolyVerts_;        // last user-drawn polygon (for Restore)
 
     bool dirty_ = false;

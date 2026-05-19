@@ -263,6 +263,7 @@ void McViewWidget::closePolygonAndEmit()
 {
     if (polyVerts_.size() < kMinPolyVerts) return;
     polyMask_ = rasterizePolygon(polyVerts_);
+    closedPolyVerts_ = polyVerts_;
     lastPolyVerts_ = polyVerts_;
     polyVerts_.clear();
     polyOpen_ = false;
@@ -278,6 +279,8 @@ void McViewWidget::selectWhole()
     polyOpen_ = false;
     polyHoverValid_ = false;
     polyMask_ = cv::Mat(srcGray_.size(), CV_8UC1, cv::Scalar(255));
+    const int W = srcGray_.cols, H = srcGray_.rows;
+    closedPolyVerts_ = { {0, 0}, {W - 1, 0}, {W - 1, H - 1}, {0, H - 1} };
     previewMask_.release();
     update();
     emit polygonFinished();
@@ -295,6 +298,7 @@ void McViewWidget::restoreLastPolygon()
     polyOpen_ = false;
     polyHoverValid_ = false;
     polyMask_ = rasterizePolygon(lastPolyVerts_);
+    closedPolyVerts_ = lastPolyVerts_;
     previewMask_.release();
     update();
     emit polygonFinished();
@@ -306,6 +310,7 @@ void McViewWidget::cancelPolygon()
     polyOpen_ = false;
     polyHoverValid_ = false;
     polyMask_.release();
+    closedPolyVerts_.clear();
     previewMask_.release();
     update();
 }
@@ -493,6 +498,7 @@ void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
     }
 
     polyMask_.release();
+    closedPolyVerts_.clear();
     previewMask_.release();
     update();
     if (pts.empty()) return;
@@ -582,24 +588,38 @@ void McViewWidget::paintEvent(QPaintEvent*)
             p.drawEllipse(QPointF(v.x + 0.5, v.y + 0.5), 2.0 / scale_, 2.0 / scale_);
         }
     } else if (!polyMask_.empty()) {
-        // Captured polygon (yellow fill) + optional preview pixels overlay
-        // (cyan = will be added, magenta = will be removed).
-        QImage overlay(polyMask_.cols, polyMask_.rows, QImage::Format_RGBA8888);
-        overlay.fill(0);
-        const bool havePrev = !previewMask_.empty();
-        const QRgb prevCol = previewIsAdd_
-            ? qRgba(0, 230, 230, 230)        // cyan
-            : qRgba(230, 0, 230, 230);       // magenta
-        for (int y = 0; y < polyMask_.rows; ++y) {
-            QRgb* row = reinterpret_cast<QRgb*>(overlay.scanLine(y));
-            const uchar* m = polyMask_.ptr<uchar>(y);
-            const uchar* pv = havePrev ? previewMask_.ptr<uchar>(y) : nullptr;
-            for (int x = 0; x < polyMask_.cols; ++x) {
-                if (pv && pv[x]) row[x] = prevCol;
-                else if (m[x])   row[x] = qRgba(255, 200, 0, 50);
+        // Preview pixels (cyan = will be added, magenta = will be removed).
+        if (!previewMask_.empty()) {
+            QImage overlay(previewMask_.cols, previewMask_.rows, QImage::Format_RGBA8888);
+            overlay.fill(0);
+            const QRgb prevCol = previewIsAdd_
+                ? qRgba(0, 230, 230, 230)
+                : qRgba(230, 0, 230, 230);
+            for (int y = 0; y < previewMask_.rows; ++y) {
+                QRgb* row = reinterpret_cast<QRgb*>(overlay.scanLine(y));
+                const uchar* pv = previewMask_.ptr<uchar>(y);
+                for (int x = 0; x < previewMask_.cols; ++x)
+                    if (pv[x]) row[x] = prevCol;
             }
+            p.drawImage(0, 0, overlay);
         }
-        p.drawImage(0, 0, overlay);
+        // Polygon outline + vertex dots.
+        if (!closedPolyVerts_.empty()) {
+            QPen pen(QColor(255, 200, 0));
+            pen.setCosmetic(true);
+            pen.setWidth(2);
+            p.setPen(pen);
+            p.setBrush(Qt::NoBrush);
+            for (size_t i = 0; i < closedPolyVerts_.size(); ++i) {
+                const auto& a = closedPolyVerts_[i];
+                const auto& b = closedPolyVerts_[(i + 1) % closedPolyVerts_.size()];
+                p.drawLine(QPointF(a.x + 0.5, a.y + 0.5),
+                           QPointF(b.x + 0.5, b.y + 0.5));
+            }
+            for (const auto& v : closedPolyVerts_)
+                p.drawEllipse(QPointF(v.x + 0.5, v.y + 0.5),
+                              2.0 / scale_, 2.0 / scale_);
+        }
     }
 }
 
