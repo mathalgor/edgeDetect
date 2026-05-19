@@ -329,7 +329,7 @@ void McViewWidget::applyOp(const std::vector<cv::Point>& pts, bool add)
 }
 
 int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
-                                int gMax, int rMax) const
+                                bool useG, int gMax, bool useR, int rMax) const
 {
     if (polyMask_.empty() || labels_.empty()) return 0;
     const int H = srcGray_.rows, W = srcGray_.cols;
@@ -354,12 +354,14 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
         if (wantInside && !fullyInside) continue;
         // Add picks confident-edge segments (low G, low R = strong edge);
         // Remove picks weak/uncertain segments (high G, high R = bg-like).
+        // Each criterion is gated by its checkbox; when off it doesn't
+        // restrict eligibility.
         if (action == FilterAction::Add) {
-            if (labelGray_[L] > gMax) continue;
-            if (labelAvgR_[L] > rMax) continue;
+            if (useG && labelGray_[L] > gMax) continue;
+            if (useR && labelAvgR_[L] > rMax) continue;
         } else {
-            if (labelGray_[L] < gMax) continue;
-            if (labelAvgR_[L] < rMax) continue;
+            if (useG && labelGray_[L] < gMax) continue;
+            if (useR && labelAvgR_[L] < rMax) continue;
         }
         eligible[L] = 1;
     }
@@ -382,7 +384,7 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
 }
 
 int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
-                                   int gMax, int rMax)
+                                   bool useG, int gMax, bool useR, int rMax)
 {
     if (polyMask_.empty() || labels_.empty()) {
         clearFilterPreview();
@@ -409,12 +411,14 @@ int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
         if (wantInside && !fullyInside) continue;
         // Add picks confident-edge segments (low G, low R = strong edge);
         // Remove picks weak/uncertain segments (high G, high R = bg-like).
+        // Each criterion is gated by its checkbox; when off it doesn't
+        // restrict eligibility.
         if (action == FilterAction::Add) {
-            if (labelGray_[L] > gMax) continue;
-            if (labelAvgR_[L] > rMax) continue;
+            if (useG && labelGray_[L] > gMax) continue;
+            if (useR && labelAvgR_[L] > rMax) continue;
         } else {
-            if (labelGray_[L] < gMax) continue;
-            if (labelAvgR_[L] < rMax) continue;
+            if (useG && labelGray_[L] < gMax) continue;
+            if (useR && labelAvgR_[L] < rMax) continue;
         }
         eligible[L] = 1;
     }
@@ -448,7 +452,7 @@ void McViewWidget::clearFilterPreview()
 }
 
 void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
-                                int gMax, int rMax)
+                                bool useG, int gMax, bool useR, int rMax)
 {
     if (polyMask_.empty() || labels_.empty()) { cancelPolygon(); return; }
     const int H = srcGray_.rows, W = srcGray_.cols;
@@ -472,12 +476,14 @@ void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
         if (wantInside && !fullyInside) continue;
         // Add picks confident-edge segments (low G, low R = strong edge);
         // Remove picks weak/uncertain segments (high G, high R = bg-like).
+        // Each criterion is gated by its checkbox; when off it doesn't
+        // restrict eligibility.
         if (action == FilterAction::Add) {
-            if (labelGray_[L] > gMax) continue;
-            if (labelAvgR_[L] > rMax) continue;
+            if (useG && labelGray_[L] > gMax) continue;
+            if (useR && labelAvgR_[L] > rMax) continue;
         } else {
-            if (labelGray_[L] < gMax) continue;
-            if (labelAvgR_[L] < rMax) continue;
+            if (useG && labelGray_[L] < gMax) continue;
+            if (useR && labelAvgR_[L] < rMax) continue;
         }
         eligible[L] = 1;
     }

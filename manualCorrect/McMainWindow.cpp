@@ -559,113 +559,137 @@ void McMainWindow::updateUndoActions()
     if (aRedo_) aRedo_->setEnabled(!redoStack_.isEmpty());
 }
 
-void McMainWindow::onPolygonFinished()
+void McMainWindow::ensureFilterDialog()
 {
-    auto* dlg = new QDialog(this);
-    dlg->setAttribute(Qt::WA_DeleteOnClose);
-    dlg->setWindowFlags(dlg->windowFlags() | Qt::Tool | Qt::WindowStaysOnTopHint);
-    dlg->setWindowTitle("Polygon filter");
-    dlg->setModal(false);
+    if (filterDlg_) return;
 
-    auto* modeCb = new QComboBox(dlg);
-    modeCb->addItem("Touching (segments overlapping)", 0);
-    modeCb->addItem("Inside (segments fully inside)",  1);
-    modeCb->setCurrentIndex(lastMode_);
+    filterDlg_ = new QDialog(this);
+    filterDlg_->setWindowFlags(filterDlg_->windowFlags() | Qt::Tool
+                               | Qt::WindowStaysOnTopHint);
+    filterDlg_->setWindowTitle("Polygon filter");
+    filterDlg_->setModal(false);
 
-    auto* actCb = new QComboBox(dlg);
-    actCb->addItem("Remove from result", 0);
-    actCb->addItem("Add to result",      1);
-    actCb->setCurrentIndex(lastAction_);
+    fdModeCb_ = new QComboBox(filterDlg_);
+    fdModeCb_->addItem("Touching (segments overlapping)", 0);
+    fdModeCb_->addItem("Inside (segments fully inside)",  1);
 
-    auto modeFn = [modeCb]{
-        return modeCb->currentIndex() == 0
+    fdActCb_ = new QComboBox(filterDlg_);
+    fdActCb_->addItem("Remove from result", 0);
+    fdActCb_->addItem("Add to result",      1);
+
+    fdGCb_ = new QCheckBox("filter by G", filterDlg_);
+    fdGCb_->setChecked(true);
+    fdRCb_ = new QCheckBox("filter by avg R", filterDlg_);
+    fdRCb_->setChecked(true);
+
+    fdGSb_ = new CountSnapSpinBox(filterDlg_, [](int){ return 0; });
+    fdGSb_->setRange(0, 255); fdGSb_->setValue(200);
+    fdGSb_->setAccelerated(true);
+
+    fdRSb_ = new CountSnapSpinBox(filterDlg_, [](int){ return 0; });
+    fdRSb_->setRange(0, 255); fdRSb_->setValue(200);
+    fdRSb_->setAccelerated(true);
+
+    fdGSb_->setCountFn([this](int g) {
+        const auto mode = (fdModeCb_->currentIndex() == 0)
             ? McViewWidget::FilterMode::Touching
             : McViewWidget::FilterMode::Inside;
-    };
-    auto actFn = [actCb]{
-        return actCb->currentIndex() == 0
+        const auto act = (fdActCb_->currentIndex() == 0)
             ? McViewWidget::FilterAction::Remove
             : McViewWidget::FilterAction::Add;
-    };
-
-    auto* gSb = new CountSnapSpinBox(dlg, [](int){ return 0; });
-    gSb->setRange(0, 255); gSb->setValue(lastGMax_);
-    gSb->setAccelerated(true);
-    gSb->setToolTip("Max segment G (edge gray) — ≤; step jumps to next value "
-                    "where the affected-pixel count changes");
-
-    auto* rSb = new CountSnapSpinBox(dlg, [](int){ return 0; });
-    rSb->setRange(0, 255); rSb->setValue(lastRMax_);
-    rSb->setAccelerated(true);
-    rSb->setToolTip("Max segment avg R (prob inverted) — ≤; step jumps to next "
-                    "value where the affected-pixel count changes");
-
-    gSb->setCountFn([this, modeFn, actFn, rSb](int g) {
-        return view_->filterCountIf(modeFn(), actFn(), g, rSb->value());
+        return view_->filterCountIf(mode, act, true, g,
+                                    fdRCb_->isChecked(), fdRSb_->value());
     });
-    rSb->setCountFn([this, modeFn, actFn, gSb](int r) {
-        return view_->filterCountIf(modeFn(), actFn(), gSb->value(), r);
+    fdRSb_->setCountFn([this](int r) {
+        const auto mode = (fdModeCb_->currentIndex() == 0)
+            ? McViewWidget::FilterMode::Touching
+            : McViewWidget::FilterMode::Inside;
+        const auto act = (fdActCb_->currentIndex() == 0)
+            ? McViewWidget::FilterAction::Remove
+            : McViewWidget::FilterAction::Add;
+        return view_->filterCountIf(mode, act,
+                                    fdGCb_->isChecked(), fdGSb_->value(),
+                                    true, r);
     });
 
-    auto* countLbl = new QLabel(dlg);
+    fdGLbl_ = new QLabel("G:");
+    fdRLbl_ = new QLabel("avg R:");
+    fdCountLbl_ = new QLabel(filterDlg_);
 
-    auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
+    auto* gRow = new QHBoxLayout;
+    gRow->addWidget(fdGCb_); gRow->addWidget(fdGSb_, 1);
+    auto* rRow = new QHBoxLayout;
+    rRow->addWidget(fdRCb_); rRow->addWidget(fdRSb_, 1);
 
-    auto* lay = new QFormLayout(dlg);
+    auto* bb = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, filterDlg_);
+
+    auto* lay = new QFormLayout(filterDlg_);
     lay->setContentsMargins(8, 8, 8, 8);
-    auto* gLbl = new QLabel("G:");
-    auto* rLbl = new QLabel("avg R:");
-    lay->addRow("Action:",  actCb);
-    lay->addRow("Spatial:", modeCb);
-    lay->addRow(gLbl,       gSb);
-    lay->addRow(rLbl,       rSb);
-    lay->addRow(countLbl);
+    lay->addRow("Action:",  fdActCb_);
+    lay->addRow("Spatial:", fdModeCb_);
+    lay->addRow(fdGLbl_,    gRow);
+    lay->addRow(fdRLbl_,    rRow);
+    lay->addRow(fdCountLbl_);
     lay->addRow(bb);
 
-    auto refresh = [this, modeCb, actCb, gSb, rSb, countLbl, gLbl, rLbl]() {
-        const auto mode = (modeCb->currentIndex() == 0)
-            ? McViewWidget::FilterMode::Touching
-            : McViewWidget::FilterMode::Inside;
-        const auto act = (actCb->currentIndex() == 0)
-            ? McViewWidget::FilterAction::Remove
-            : McViewWidget::FilterAction::Add;
-        const bool addMode = (act == McViewWidget::FilterAction::Add);
-        gLbl->setText(addMode ? "G ≤ (keep strong):" : "G ≥ (drop weak):");
-        rLbl->setText(addMode ? "avg R ≤ (confident edge):" : "avg R ≥ (bg-like):");
-        const int n = view_->setFilterPreview(mode, act, gSb->value(), rSb->value());
-        const QLocale loc = QLocale::system();
-        countLbl->setText(QString("would affect %1 px").arg(loc.toString(n)));
-    };
-    refresh();
-    connect(modeCb, QOverload<int>::of(&QComboBox::currentIndexChanged), dlg,
-            [refresh](int){ refresh(); });
-    connect(actCb,  QOverload<int>::of(&QComboBox::currentIndexChanged), dlg,
-            [refresh](int){ refresh(); });
-    connect(gSb,    QOverload<int>::of(&QSpinBox::valueChanged), dlg,
-            [refresh](int){ refresh(); });
-    connect(rSb,    QOverload<int>::of(&QSpinBox::valueChanged), dlg,
-            [refresh](int){ refresh(); });
+    connect(fdGCb_, &QCheckBox::toggled, fdGSb_, &QWidget::setEnabled);
+    connect(fdRCb_, &QCheckBox::toggled, fdRSb_, &QWidget::setEnabled);
+    connect(fdModeCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int){ filterDialogRefresh(); });
+    connect(fdActCb_,  QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int){ filterDialogRefresh(); });
+    connect(fdGCb_, &QCheckBox::toggled, this, [this](bool){ filterDialogRefresh(); });
+    connect(fdRCb_, &QCheckBox::toggled, this, [this](bool){ filterDialogRefresh(); });
+    connect(fdGSb_, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [this](int){ filterDialogRefresh(); });
+    connect(fdRSb_, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [this](int){ filterDialogRefresh(); });
 
-    connect(bb, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
-    connect(bb, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
-    connect(dlg, &QDialog::accepted, this,
-            [this, modeCb, actCb, gSb, rSb]() {
-        lastMode_   = modeCb->currentIndex();
-        lastAction_ = actCb->currentIndex();
-        lastGMax_   = gSb->value();
-        lastRMax_   = rSb->value();
-        const auto mode = (lastMode_ == 0)
+    connect(bb, &QDialogButtonBox::accepted, filterDlg_, &QDialog::accept);
+    connect(bb, &QDialogButtonBox::rejected, filterDlg_, &QDialog::reject);
+    connect(filterDlg_, &QDialog::accepted, this, [this]() {
+        const auto mode = (fdModeCb_->currentIndex() == 0)
             ? McViewWidget::FilterMode::Touching
             : McViewWidget::FilterMode::Inside;
-        const auto act = (lastAction_ == 0)
+        const auto act = (fdActCb_->currentIndex() == 0)
             ? McViewWidget::FilterAction::Remove
             : McViewWidget::FilterAction::Add;
-        view_->commitFilter(mode, act, lastGMax_, lastRMax_);
+        view_->commitFilter(mode, act,
+                            fdGCb_->isChecked(), fdGSb_->value(),
+                            fdRCb_->isChecked(), fdRSb_->value());
     });
-    connect(dlg, &QDialog::rejected, this, [this]() { view_->cancelPolygon(); });
+    connect(filterDlg_, &QDialog::rejected, this, [this]() {
+        view_->cancelPolygon();
+    });
+}
 
-    dlg->adjustSize();
-    dlg->show();
+void McMainWindow::filterDialogRefresh()
+{
+    if (!filterDlg_ || !view_->hasPendingPolygon()) return;
+    const auto mode = (fdModeCb_->currentIndex() == 0)
+        ? McViewWidget::FilterMode::Touching
+        : McViewWidget::FilterMode::Inside;
+    const auto act = (fdActCb_->currentIndex() == 0)
+        ? McViewWidget::FilterAction::Remove
+        : McViewWidget::FilterAction::Add;
+    const bool addMode = (act == McViewWidget::FilterAction::Add);
+    fdGLbl_->setText(addMode ? "G ≤ (keep strong):" : "G ≥ (drop weak):");
+    fdRLbl_->setText(addMode ? "avg R ≤ (confident):" : "avg R ≥ (bg-like):");
+    const int n = view_->setFilterPreview(mode, act,
+                                          fdGCb_->isChecked(), fdGSb_->value(),
+                                          fdRCb_->isChecked(), fdRSb_->value());
+    const QLocale loc = QLocale::system();
+    fdCountLbl_->setText(QString("would affect %1 px").arg(loc.toString(n)));
+}
+
+void McMainWindow::onPolygonFinished()
+{
+    ensureFilterDialog();
+    filterDialogRefresh();
+    filterDlg_->show();
+    filterDlg_->raise();
+    filterDlg_->activateWindow();
 }
 
 void McMainWindow::updateFileLabel()

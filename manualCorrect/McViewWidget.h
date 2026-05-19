@@ -61,7 +61,7 @@ public:
     // Apply filter parameters: emits editOp(pts, action==Add) and updates
     // out_/vis_. Drops the polygon afterwards.
     void commitFilter(FilterMode mode, FilterAction action,
-                      int gMax, int rMax);
+                      bool useG, int gMax, bool useR, int rMax);
     void cancelPolygon();
     // Right-click menu actions.
     void selectWhole();        // polyMask_ = entire image rect; opens filter
@@ -71,12 +71,12 @@ public:
     // Counts (for the filter dialog labels): how many pixels would change
     // if the filter were applied with these parameters.
     int  filterCountIf(FilterMode mode, FilterAction action,
-                       int gMax, int rMax) const;
+                       bool useG, int gMax, bool useR, int rMax) const;
     // Live preview: compute the affected-pixel mask for these parameters,
     // store it, repaint, and return the pixel count. The mask is shown as
     // cyan (Add) or magenta (Remove) on top of the polygon overlay.
     int  setFilterPreview(FilterMode mode, FilterAction action,
-                          int gMax, int rMax);
+                          bool useG, int gMax, bool useR, int rMax);
     void clearFilterPreview();
     // True when the captured polygon has at least one segment touching it
     // — needed for sanity in the dialog.

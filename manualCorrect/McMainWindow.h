@@ -78,11 +78,19 @@ private:
     QPushButton* doneBtn_ = nullptr;
     QMenu* recentMenu_ = nullptr;
 
-    // Last-used filter dialog values.
-    int  lastGMax_   = 200;
-    int  lastRMax_   = 200;
-    int  lastMode_   = 0;   // 0=Touching, 1=Inside
-    int  lastAction_ = 0;   // 0=Remove,   1=Add
+    // Persistent filter dialog (created lazily on first polygon).
+    class QDialog*  filterDlg_     = nullptr;
+    class QComboBox* fdModeCb_     = nullptr;
+    class QComboBox* fdActCb_      = nullptr;
+    class QCheckBox* fdGCb_        = nullptr;
+    class QCheckBox* fdRCb_        = nullptr;
+    class CountSnapSpinBox* fdGSb_ = nullptr;
+    class CountSnapSpinBox* fdRSb_ = nullptr;
+    class QLabel*    fdGLbl_       = nullptr;
+    class QLabel*    fdRLbl_       = nullptr;
+    class QLabel*    fdCountLbl_   = nullptr;
+    void ensureFilterDialog();
+    void filterDialogRefresh();
 
     TimeTracker tracker_;
 
