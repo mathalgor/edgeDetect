@@ -8,8 +8,18 @@
 
 bool ProjectConfig::isValid() const
 {
-    return !sourceDir.isEmpty() && QDir(sourceDir).exists()
-        && !outputDir.isEmpty() && QDir(outputDir).exists();
+    return validationError().isEmpty();
+}
+
+QString ProjectConfig::validationError() const
+{
+    if (sourceDir.isEmpty()) return QStringLiteral("sourceDir is not set");
+    if (!QDir(sourceDir).exists())
+        return QStringLiteral("sourceDir does not exist: %1").arg(sourceDir);
+    if (outputDir.isEmpty()) return QStringLiteral("outputDir is not set");
+    if (!QDir(outputDir).exists())
+        return QStringLiteral("outputDir does not exist: %1").arg(outputDir);
+    return {};
 }
 
 bool ProjectConfig::load(const QString& path)

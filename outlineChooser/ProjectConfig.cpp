@@ -8,12 +8,24 @@
 
 bool ProjectConfig::isValid() const
 {
+    return validationError().isEmpty();
+}
+
+QString ProjectConfig::validationError() const
+{
     // outputDir is required but does not need to exist yet — it's created
     // on first save. The three input directories must exist.
-    return !sourceDir.isEmpty()    && QDir(sourceDir).exists()
-        && !outlines1Dir.isEmpty() && QDir(outlines1Dir).exists()
-        && !outlines2Dir.isEmpty() && QDir(outlines2Dir).exists()
-        && !outputDir.isEmpty();
+    if (sourceDir.isEmpty()) return QStringLiteral("sourceDir is not set");
+    if (!QDir(sourceDir).exists())
+        return QStringLiteral("sourceDir does not exist: %1").arg(sourceDir);
+    if (outlines1Dir.isEmpty()) return QStringLiteral("outlines1Dir is not set");
+    if (!QDir(outlines1Dir).exists())
+        return QStringLiteral("outlines1Dir does not exist: %1").arg(outlines1Dir);
+    if (outlines2Dir.isEmpty()) return QStringLiteral("outlines2Dir is not set");
+    if (!QDir(outlines2Dir).exists())
+        return QStringLiteral("outlines2Dir does not exist: %1").arg(outlines2Dir);
+    if (outputDir.isEmpty()) return QStringLiteral("outputDir is not set");
+    return {};
 }
 
 bool ProjectConfig::load(const QString& path)

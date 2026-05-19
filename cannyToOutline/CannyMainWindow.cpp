@@ -86,9 +86,15 @@ void CannyMainWindow::rebuildRecentMenu()
 bool CannyMainWindow::loadProjectFromPath(const QString& path)
 {
     ProjectConfig nc;
-    if (!nc.load(path) || !nc.isValid()) {
+    if (!nc.load(path)) {
         QMessageBox::warning(this, "Open project",
-            QString("Failed to load project:\n%1").arg(path));
+            QString("Failed to read project file:\n%1").arg(path));
+        return false;
+    }
+    const QString err = nc.validationError();
+    if (!err.isEmpty()) {
+        QMessageBox::warning(this, "Open project",
+            QString("Project %1 is invalid:\n%2").arg(path, err));
         return false;
     }
     project_ = nc;

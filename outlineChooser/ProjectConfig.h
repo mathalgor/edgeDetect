@@ -11,6 +11,9 @@ struct ProjectConfig {
     QString originalDir;     // optional
 
     bool isValid() const;
+    // Returns an empty string when valid, otherwise a human-readable message
+    // describing which required directory is missing or unset.
+    QString validationError() const;
     bool load(const QString& path);
     bool save(const QString& path) const;
 };
