@@ -91,6 +91,7 @@ private:
     class QSpinBox*  fdNumSb_      = nullptr;
     class QSpinBox*  fdExtSb_      = nullptr;
     class QCheckBox* fdBlobCb_     = nullptr;
+    class QCheckBox* fdInvCb_      = nullptr;
     class QLabel*    fdGLbl_       = nullptr;
     class QLabel*    fdRLbl_       = nullptr;
     class QLabel*    fdNumLbl_     = nullptr;

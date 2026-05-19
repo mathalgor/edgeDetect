@@ -630,6 +630,11 @@ void McMainWindow::ensureFilterDialog()
 
     fdBlobCb_ = new QCheckBox("num/extent on result blobs (Remove)", filterDlg_);
     fdBlobCb_->setChecked(true);
+
+    fdInvCb_ = new QCheckBox("inverse selection (outside polygon)", filterDlg_);
+    fdInvCb_->setToolTip("When on, the filter applies outside the polygon "
+                         "instead of inside — useful to exclude a region "
+                         "(eye, signature) from a global clean-up.");
     fdBlobCb_->setToolTip("When on, num-pixels and extent compare against "
                           "connected components of the current result mask "
                           "(binary CC), not against same-G segments. "
@@ -651,7 +656,7 @@ void McMainWindow::ensureFilterDialog()
             fdRCb_->isChecked(), fdRSb_->value(),
             fdNumCb_->isChecked(), fdNumSb_->value(),
             fdExtCb_->isChecked(), fdExtSb_->value(),
-            fdBlobCb_->isChecked());
+            fdBlobCb_->isChecked(), fdInvCb_->isChecked());
     });
     fdRSb_->setCountFn([this, curParams](int r) {
         auto [mode, act] = curParams();
@@ -660,7 +665,7 @@ void McMainWindow::ensureFilterDialog()
             true, r,
             fdNumCb_->isChecked(), fdNumSb_->value(),
             fdExtCb_->isChecked(), fdExtSb_->value(),
-            fdBlobCb_->isChecked());
+            fdBlobCb_->isChecked(), fdInvCb_->isChecked());
     });
 
     fdGLbl_   = new QLabel("G:");
@@ -687,6 +692,7 @@ void McMainWindow::ensureFilterDialog()
     lay->addRow(fdNumLbl_,  makeRow(fdNumCb_, fdNumSb_));
     lay->addRow(fdExtLbl_,  makeRow(fdExtCb_, fdExtSb_));
     lay->addRow(fdBlobCb_);
+    lay->addRow(fdInvCb_);
     lay->addRow(fdCountLbl_);
     lay->addRow(bb);
 
@@ -700,7 +706,7 @@ void McMainWindow::ensureFilterDialog()
             this, [refreshOnChange](int){ refreshOnChange(); });
     connect(fdActCb_,  QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [refreshOnChange](int){ refreshOnChange(); });
-    for (auto* cb : {fdGCb_, fdRCb_, fdNumCb_, fdExtCb_, fdBlobCb_})
+    for (auto* cb : {fdGCb_, fdRCb_, fdNumCb_, fdExtCb_, fdBlobCb_, fdInvCb_})
         connect(cb, &QCheckBox::toggled, this,
                 [refreshOnChange](bool){ refreshOnChange(); });
     for (QSpinBox* sb : std::initializer_list<QSpinBox*>{
@@ -722,7 +728,7 @@ void McMainWindow::ensureFilterDialog()
                             fdRCb_->isChecked(),   fdRSb_->value(),
                             fdNumCb_->isChecked(), fdNumSb_->value(),
                             fdExtCb_->isChecked(), fdExtSb_->value(),
-                            fdBlobCb_->isChecked());
+                            fdBlobCb_->isChecked(), fdInvCb_->isChecked());
     });
     connect(filterDlg_, &QDialog::rejected, this, [this]() {
         view_->cancelPolygon();
@@ -749,7 +755,7 @@ void McMainWindow::filterDialogRefresh()
                                           fdRCb_->isChecked(),   fdRSb_->value(),
                                           fdNumCb_->isChecked(), fdNumSb_->value(),
                                           fdExtCb_->isChecked(), fdExtSb_->value(),
-                                          fdBlobCb_->isChecked());
+                                          fdBlobCb_->isChecked(), fdInvCb_->isChecked());
     const QLocale loc = QLocale::system();
     fdCountLbl_->setText(QString("would affect %1 px").arg(loc.toString(n)));
 }

@@ -529,7 +529,7 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
                                 bool useG, int gMax, bool useR, int rMax,
                                 bool useNum, int numThr,
                                 bool useExt, int extThr,
-                                bool useResultBlobs) const
+                                bool useResultBlobs, bool inverse) const
 {
     if (polyMask_.empty() || labels_.empty()) return 0;
     const int H = srcGray_.rows, W = srcGray_.cols;
@@ -541,10 +541,14 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
     if (blobMode && (useNum || useExt))
         computeResultBlobs(blobLabels, blobSize, blobExtent);
 
+    cv::Mat effMask;
+    if (inverse) cv::bitwise_not(polyMask_, effMask);
+    else effMask = polyMask_;
+
     std::vector<int> labelInMask(nL, 0);   // pixels of label inside polyMask
     for (int y = 0; y < H; ++y) {
         const int* rowL = labels_.ptr<int>(y);
-        const uchar* rowM = polyMask_.ptr<uchar>(y);
+        const uchar* rowM = effMask.ptr<uchar>(y);
         for (int x = 0; x < W; ++x) {
             const int L = rowL[x];
             if (L == 0) continue;
@@ -609,7 +613,7 @@ int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
                                    bool useG, int gMax, bool useR, int rMax,
                                    bool useNum, int numThr,
                                    bool useExt, int extThr,
-                                   bool useResultBlobs)
+                                   bool useResultBlobs, bool inverse)
 {
     if (polyMask_.empty() || labels_.empty()) {
         clearFilterPreview();
@@ -624,10 +628,14 @@ int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
     if (blobMode && (useNum || useExt))
         computeResultBlobs(blobLabels, blobSize, blobExtent);
 
+    cv::Mat effMask;
+    if (inverse) cv::bitwise_not(polyMask_, effMask);
+    else effMask = polyMask_;
+
     std::vector<int> labelInMask(nL, 0);
     for (int y = 0; y < H; ++y) {
         const int* rowL = labels_.ptr<int>(y);
-        const uchar* rowM = polyMask_.ptr<uchar>(y);
+        const uchar* rowM = effMask.ptr<uchar>(y);
         for (int x = 0; x < W; ++x) {
             const int L = rowL[x];
             if (L == 0) continue;
@@ -700,7 +708,7 @@ void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
                                 bool useG, int gMax, bool useR, int rMax,
                                 bool useNum, int numThr,
                                 bool useExt, int extThr,
-                                bool useResultBlobs)
+                                bool useResultBlobs, bool inverse)
 {
     if (polyMask_.empty() || labels_.empty()) { cancelPolygon(); return; }
     const int H = srcGray_.rows, W = srcGray_.cols;
@@ -712,10 +720,14 @@ void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
     if (blobMode && (useNum || useExt))
         computeResultBlobs(blobLabels, blobSize, blobExtent);
 
+    cv::Mat effMask;
+    if (inverse) cv::bitwise_not(polyMask_, effMask);
+    else effMask = polyMask_;
+
     std::vector<int> labelInMask(nL, 0);
     for (int y = 0; y < H; ++y) {
         const int* rowL = labels_.ptr<int>(y);
-        const uchar* rowM = polyMask_.ptr<uchar>(y);
+        const uchar* rowM = effMask.ptr<uchar>(y);
         for (int x = 0; x < W; ++x) {
             const int L = rowL[x];
             if (L == 0) continue;

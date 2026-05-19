@@ -75,7 +75,7 @@ public:
                       bool useG, int gMax, bool useR, int rMax,
                       bool useNum, int numThr,
                       bool useExt, int extThr,
-                      bool useResultBlobs);
+                      bool useResultBlobs, bool inverse);
     void cancelPolygon();
     // Right-click menu actions.
     void selectWhole();        // polyMask_ = entire image rect; opens filter
@@ -96,12 +96,12 @@ public:
                        bool useG, int gMax, bool useR, int rMax,
                        bool useNum, int numThr,
                        bool useExt, int extThr,
-                       bool useResultBlobs) const;
+                       bool useResultBlobs, bool inverse) const;
     int  setFilterPreview(FilterMode mode, FilterAction action,
                           bool useG, int gMax, bool useR, int rMax,
                           bool useNum, int numThr,
                           bool useExt, int extThr,
-                          bool useResultBlobs);
+                          bool useResultBlobs, bool inverse);
     void clearFilterPreview();
     // True when the captured polygon has at least one segment touching it
     // — needed for sanity in the dialog.
