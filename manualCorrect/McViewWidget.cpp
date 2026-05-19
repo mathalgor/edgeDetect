@@ -4,6 +4,8 @@
 #include <QCursor>
 #include <QKeyEvent>
 #include <QPixmap>
+
+#include "CursorUtils.h"
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -18,21 +20,6 @@
 
 static constexpr int kMinPolyVerts = 3;
 
-static QCursor makeEraserCursor()
-{
-    const int d = 18;
-    QPixmap pm(d, d);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(QPen(Qt::white, 2));
-    p.drawEllipse(1, 1, d - 3, d - 3);
-    p.setPen(QPen(Qt::black, 1));
-    p.drawEllipse(1, 1, d - 3, d - 3);
-    p.end();
-    return QCursor(pm, d / 2, d / 2);
-}
-
 McViewWidget::McViewWidget(QWidget* parent)
     : QWidget(parent)
 {
@@ -45,7 +32,7 @@ void McViewWidget::updateCursorForMods(Qt::KeyboardModifiers m)
 {
     if (editLocked_ || vis_.isNull()) { setCursor(Qt::ArrowCursor); return; }
     if (m & Qt::ControlModifier) {
-        static const QCursor eraser = makeEraserCursor();
+        static const QCursor eraser = makePickCursor(8);
         setCursor(eraser);
     } else {
         setCursor(Qt::ArrowCursor);
@@ -109,9 +96,17 @@ void McViewWidget::setPresetIndex(int i)
 {
     if (i < 0 || i >= static_cast<int>(presets_.size())) return;
     if (i == presetIndex_) return;
+    prevPresetIndex_ = presetIndex_;
     presetIndex_ = i;
     rebuildVisualization();
     update();
+    emit presetChanged(i);
+}
+
+void McViewWidget::swapWithPrevPreset()
+{
+    if (prevPresetIndex_ == presetIndex_) return;
+    setPresetIndex(prevPresetIndex_);
 }
 
 void McViewWidget::setData(const cv::Mat& inOutlineFileFmt,

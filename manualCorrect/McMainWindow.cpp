@@ -195,6 +195,16 @@ void McMainWindow::createUi()
         connect(sc, &QShortcut::activated, this,
                 [this, i]{ presetCb_->setCurrentIndex(i); });
     }
+    auto* scTab = new QShortcut(QKeySequence(Qt::Key_Tab), this);
+    scTab->setContext(Qt::ApplicationShortcut);
+    connect(scTab, &QShortcut::activated, this,
+            [this]{ view_->swapWithPrevPreset(); });
+    connect(view_, &McViewWidget::presetChanged, this, [this](int i) {
+        if (presetCb_->currentIndex() != i) {
+            QSignalBlocker b(presetCb_);
+            presetCb_->setCurrentIndex(i);
+        }
+    });
 
     qApp->installEventFilter(this);
     connect(&tracker_, &TimeTracker::tick, this,

@@ -42,6 +42,12 @@ public:
     const std::vector<Preset>& presets() const { return presets_; }
     int  presetIndex() const { return presetIndex_; }
     void setPresetIndex(int i);
+    void swapWithPrevPreset();
+
+signals:
+    void presetChanged(int index);
+
+public:
 
     // Edit lock (Done state)
     void setEditLocked(bool on);
@@ -148,6 +154,7 @@ private:
     bool conn8_ = true;
     std::vector<Preset> presets_;
     int  presetIndex_ = 0;
+    int  prevPresetIndex_ = 0;
 
     // Live filter preview: 0/255 mask of affected pixels + action color hint.
     cv::Mat previewMask_;
