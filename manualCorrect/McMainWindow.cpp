@@ -629,6 +629,7 @@ void McMainWindow::ensureFilterDialog()
     fdExtSb_->setEnabled(false);
 
     fdBlobCb_ = new QCheckBox("num/extent on result blobs (Remove)", filterDlg_);
+    fdBlobCb_->setChecked(true);
     fdBlobCb_->setToolTip("When on, num-pixels and extent compare against "
                           "connected components of the current result mask "
                           "(binary CC), not against same-G segments. "
