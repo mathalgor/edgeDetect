@@ -24,6 +24,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QShortcut>
+#include <QSlider>
 #include <QSizePolicy>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -100,6 +101,16 @@ void McMainWindow::createUi()
     for (const auto& pr : view_->presets()) presetCb_->addItem(pr.name);
     presetCb_->setCurrentIndex(view_->presetIndex());
     tb->addWidget(presetCb_);
+
+    auto* fadeSlider = new QSlider(Qt::Horizontal);
+    fadeSlider->setRange(0, 100);
+    fadeSlider->setValue(100);
+    fadeSlider->setFixedWidth(120);
+    fadeSlider->setToolTip("Fade the rendered image so add/remove preview "
+                           "pixels stand out (100 = no fade)");
+    tb->addWidget(fadeSlider);
+    connect(fadeSlider, &QSlider::valueChanged, this,
+            [this](int v){ view_->setFadePercent(v); });
 
     auto* spacer = new QWidget();
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);

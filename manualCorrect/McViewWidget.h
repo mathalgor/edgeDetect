@@ -44,6 +44,11 @@ public:
     void setPresetIndex(int i);
     void swapWithPrevPreset();
 
+    // Dim the rendered image toward black (for non-Plain bg presets) or
+    // toward white (for Plain bg), 0..100. 100 = no fade.
+    void setFadePercent(int p);
+    int  fadePercent() const { return fadePercent_; }
+
 signals:
     void presetChanged(int index);
 
@@ -182,6 +187,7 @@ private:
     std::vector<Preset> presets_;
     int  presetIndex_ = 0;
     int  prevPresetIndex_ = 0;
+    int  fadePercent_ = 100;
 
     // Live filter preview: 0/255 mask of affected pixels + action color hint.
     cv::Mat previewMask_;

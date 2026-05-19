@@ -158,6 +158,15 @@ void McViewWidget::swapWithPrevPreset()
     setPresetIndex(prevPresetIndex_);
 }
 
+void McViewWidget::setFadePercent(int p)
+{
+    p = std::clamp(p, 0, 100);
+    if (p == fadePercent_) return;
+    fadePercent_ = p;
+    rebuildVisualization();
+    update();
+}
+
 void McViewWidget::setData(const cv::Mat& inOutlineFileFmt,
                            const cv::Mat& dbgrg,
                            const cv::Mat& originalBgr,
@@ -372,6 +381,13 @@ void McViewWidget::rebuildVisualization()
             }
             if (showResult && rowOut[x] == 255) {
                 br = 0; bg = 0; bb = 0;
+            }
+            if (fadePercent_ < 100) {
+                const int target = (bgMode == Bg::Plain) ? 255 : 0;
+                const int a = fadePercent_;          // 0..100
+                br = (target * (100 - a) + br * a) / 100;
+                bg = (target * (100 - a) + bg * a) / 100;
+                bb = (target * (100 - a) + bb * a) / 100;
             }
             row[x] = qRgba(br, bg, bb, 255);
         }
