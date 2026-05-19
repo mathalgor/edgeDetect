@@ -641,15 +641,7 @@ void McViewWidget::mousePressEvent(QMouseEvent* e)
         emit contextMenuRequested(e->globalPosition().toPoint());
         return;
     }
-    if (e->button() == Qt::MiddleButton ||
-        (e->button() == Qt::LeftButton && (e->modifiers() & Qt::ControlModifier))) {
-        panning_ = true;
-        lastMousePos_ = e->pos();
-        panOffsetAtPress_ = panOffset_;
-        setCursor(Qt::ClosedHandCursor);
-        return;
-    }
-    if (e->button() == Qt::LeftButton) {
+    if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::ShiftModifier)) {
         if (editLocked_) { emit editBlocked(); return; }
         const QPointF ip = widgetToImage(e->pos());
         const int ix = static_cast<int>(std::floor(ip.x()));
@@ -657,11 +649,20 @@ void McViewWidget::mousePressEvent(QMouseEvent* e)
         if (ix < 0 || iy < 0 || ix >= srcGray_.cols || iy >= srcGray_.rows) return;
         if (!polyOpen_) {
             polyMask_.release();
+            closedPolyVerts_.clear();
             polyVerts_.clear();
             polyOpen_ = true;
         }
         polyVerts_.emplace_back(ix, iy);
         update();
+        return;
+    }
+    if (e->button() == Qt::LeftButton || e->button() == Qt::MiddleButton) {
+        panning_ = true;
+        lastMousePos_ = e->pos();
+        panOffsetAtPress_ = panOffset_;
+        setCursor(Qt::ClosedHandCursor);
+        return;
     }
 }
 
