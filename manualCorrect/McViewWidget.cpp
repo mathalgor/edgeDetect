@@ -110,8 +110,9 @@ McViewWidget::pickEditTargetNear(int cx, int cy, int radius,
     const int H = labels_.rows, W = labels_.cols;
     const int r2 = radius * radius;
 
-    // Pass 1: prefer the closest pixel that's already in the result. Erase
-    // always wins over pen, since pen is a fallback for blank areas.
+    // Single pass — strictly nearest hit wins. When allowPen is false we
+    // only consider result pixels (eraser-only mode); when true, both
+    // result pixels and gray-segment pixels are candidates.
     int bestD2 = std::numeric_limits<int>::max();
     for (int dy = -radius; dy <= radius; ++dy) {
         const int y = cy + dy;
@@ -121,29 +122,12 @@ McViewWidget::pickEditTargetNear(int cx, int cy, int radius,
             if (x < 0 || x >= W) continue;
             const int d2 = dx * dx + dy * dy;
             if (d2 > r2 || d2 >= bestD2) continue;
-            if (outResult_.at<uchar>(y, x) != 255) continue;
-            pick.label    = labels_.at<int>(y, x);
-            pick.inResult = true;
-            bestD2 = d2;
-        }
-    }
-    if (pick.inResult) return pick;
-    if (!allowPen) return pick;
-
-    // Pass 2: no result pixel near — closest gray-segment pixel for pen.
-    bestD2 = std::numeric_limits<int>::max();
-    for (int dy = -radius; dy <= radius; ++dy) {
-        const int y = cy + dy;
-        if (y < 0 || y >= H) continue;
-        for (int dx = -radius; dx <= radius; ++dx) {
-            const int x = cx + dx;
-            if (x < 0 || x >= W) continue;
-            const int d2 = dx * dx + dy * dy;
-            if (d2 > r2 || d2 >= bestD2) continue;
+            const bool isOut = outResult_.at<uchar>(y, x) == 255;
             const int L = labels_.at<int>(y, x);
-            if (L == 0) continue;
+            if (L == 0) continue;             // need a labeled segment
+            if (!isOut && !allowPen) continue; // pen disabled in this preset
             pick.label    = L;
-            pick.inResult = false;
+            pick.inResult = isOut;
             bestD2 = d2;
         }
     }
