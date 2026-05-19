@@ -1,4 +1,5 @@
 #include "CannyViewWidget.h"
+#include "ComponentExtent.h"
 #include "CursorUtils.h"
 #include "EditColors.h"
 
@@ -262,20 +263,7 @@ void CannyViewWidget::analyzeComponents()
             }
 
             const int sz = int(comp.size());
-            float diam = 0.0f;
-            if (sz >= 2) {
-                cv::convexHull(comp, hull);
-                double best = 0;
-                for (size_t i = 0; i + 1 < hull.size(); ++i) {
-                    for (size_t j = i + 1; j < hull.size(); ++j) {
-                        const double dxh = hull[i].x - hull[j].x;
-                        const double dyh = hull[i].y - hull[j].y;
-                        const double d2 = dxh*dxh + dyh*dyh;
-                        if (d2 > best) best = d2;
-                    }
-                }
-                diam = float(std::sqrt(best));
-            }
+            const float diam = componentExtent(comp);
 
             const int L = nextLabel++;
             labelSize_.push_back(sz);

@@ -597,39 +597,59 @@ void McMainWindow::ensureFilterDialog()
     fdGSb_->setAccelerated(true);
 
     fdRSb_ = new CountSnapSpinBox(filterDlg_, [](int){ return 0; });
-    fdRSb_->setRange(0, 255); fdRSb_->setValue(200);
+    fdRSb_->setRange(0, 255); fdRSb_->setValue(130);
     fdRSb_->setAccelerated(true);
 
-    fdGSb_->setCountFn([this](int g) {
-        const auto mode = (fdModeCb_->currentIndex() == 0)
-            ? McViewWidget::FilterMode::Touching
-            : McViewWidget::FilterMode::Inside;
-        const auto act = (fdActCb_->currentIndex() == 0)
-            ? McViewWidget::FilterAction::Remove
-            : McViewWidget::FilterAction::Add;
+    fdNumCb_ = new QCheckBox("filter by num pixels", filterDlg_);
+    fdExtCb_ = new QCheckBox("filter by extent", filterDlg_);
+
+    fdNumSb_ = new QSpinBox(filterDlg_);
+    fdNumSb_->setRange(0, 1000000); fdNumSb_->setValue(5);
+    fdNumSb_->setAccelerated(true);
+    fdNumSb_->setEnabled(false);
+
+    fdExtSb_ = new QSpinBox(filterDlg_);
+    fdExtSb_->setRange(0, 10000); fdExtSb_->setValue(5);
+    fdExtSb_->setAccelerated(true);
+    fdExtSb_->setEnabled(false);
+
+    auto curParams = [this]() {
+        return std::tuple{
+            (fdModeCb_->currentIndex() == 0)
+                ? McViewWidget::FilterMode::Touching
+                : McViewWidget::FilterMode::Inside,
+            (fdActCb_->currentIndex() == 0)
+                ? McViewWidget::FilterAction::Remove
+                : McViewWidget::FilterAction::Add
+        };
+    };
+    fdGSb_->setCountFn([this, curParams](int g) {
+        auto [mode, act] = curParams();
         return view_->filterCountIf(mode, act, true, g,
-                                    fdRCb_->isChecked(), fdRSb_->value());
+            fdRCb_->isChecked(), fdRSb_->value(),
+            fdNumCb_->isChecked(), fdNumSb_->value(),
+            fdExtCb_->isChecked(), fdExtSb_->value());
     });
-    fdRSb_->setCountFn([this](int r) {
-        const auto mode = (fdModeCb_->currentIndex() == 0)
-            ? McViewWidget::FilterMode::Touching
-            : McViewWidget::FilterMode::Inside;
-        const auto act = (fdActCb_->currentIndex() == 0)
-            ? McViewWidget::FilterAction::Remove
-            : McViewWidget::FilterAction::Add;
+    fdRSb_->setCountFn([this, curParams](int r) {
+        auto [mode, act] = curParams();
         return view_->filterCountIf(mode, act,
-                                    fdGCb_->isChecked(), fdGSb_->value(),
-                                    true, r);
+            fdGCb_->isChecked(), fdGSb_->value(),
+            true, r,
+            fdNumCb_->isChecked(), fdNumSb_->value(),
+            fdExtCb_->isChecked(), fdExtSb_->value());
     });
 
-    fdGLbl_ = new QLabel("G:");
-    fdRLbl_ = new QLabel("avg R:");
+    fdGLbl_   = new QLabel("G:");
+    fdRLbl_   = new QLabel("avg R:");
+    fdNumLbl_ = new QLabel("num px:");
+    fdExtLbl_ = new QLabel("extent:");
     fdCountLbl_ = new QLabel(filterDlg_);
 
-    auto* gRow = new QHBoxLayout;
-    gRow->addWidget(fdGCb_); gRow->addWidget(fdGSb_, 1);
-    auto* rRow = new QHBoxLayout;
-    rRow->addWidget(fdRCb_); rRow->addWidget(fdRSb_, 1);
+    auto makeRow = [](QCheckBox* cb, QWidget* sb) {
+        auto* row = new QHBoxLayout;
+        row->addWidget(cb); row->addWidget(sb, 1);
+        return row;
+    };
 
     auto* bb = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, filterDlg_);
@@ -638,23 +658,30 @@ void McMainWindow::ensureFilterDialog()
     lay->setContentsMargins(8, 8, 8, 8);
     lay->addRow("Action:",  fdActCb_);
     lay->addRow("Spatial:", fdModeCb_);
-    lay->addRow(fdGLbl_,    gRow);
-    lay->addRow(fdRLbl_,    rRow);
+    lay->addRow(fdGLbl_,    makeRow(fdGCb_,   fdGSb_));
+    lay->addRow(fdRLbl_,    makeRow(fdRCb_,   fdRSb_));
+    lay->addRow(fdNumLbl_,  makeRow(fdNumCb_, fdNumSb_));
+    lay->addRow(fdExtLbl_,  makeRow(fdExtCb_, fdExtSb_));
     lay->addRow(fdCountLbl_);
     lay->addRow(bb);
 
-    connect(fdGCb_, &QCheckBox::toggled, fdGSb_, &QWidget::setEnabled);
-    connect(fdRCb_, &QCheckBox::toggled, fdRSb_, &QWidget::setEnabled);
+    connect(fdGCb_,   &QCheckBox::toggled, fdGSb_,   &QWidget::setEnabled);
+    connect(fdRCb_,   &QCheckBox::toggled, fdRSb_,   &QWidget::setEnabled);
+    connect(fdNumCb_, &QCheckBox::toggled, fdNumSb_, &QWidget::setEnabled);
+    connect(fdExtCb_, &QCheckBox::toggled, fdExtSb_, &QWidget::setEnabled);
+
+    auto refreshOnChange = [this]{ filterDialogRefresh(); };
     connect(fdModeCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, [this](int){ filterDialogRefresh(); });
+            this, [refreshOnChange](int){ refreshOnChange(); });
     connect(fdActCb_,  QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, [this](int){ filterDialogRefresh(); });
-    connect(fdGCb_, &QCheckBox::toggled, this, [this](bool){ filterDialogRefresh(); });
-    connect(fdRCb_, &QCheckBox::toggled, this, [this](bool){ filterDialogRefresh(); });
-    connect(fdGSb_, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, [this](int){ filterDialogRefresh(); });
-    connect(fdRSb_, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, [this](int){ filterDialogRefresh(); });
+            this, [refreshOnChange](int){ refreshOnChange(); });
+    for (auto* cb : {fdGCb_, fdRCb_, fdNumCb_, fdExtCb_})
+        connect(cb, &QCheckBox::toggled, this,
+                [refreshOnChange](bool){ refreshOnChange(); });
+    for (QSpinBox* sb : std::initializer_list<QSpinBox*>{
+             fdGSb_, fdRSb_, fdNumSb_, fdExtSb_ })
+        connect(sb, QOverload<int>::of(&QSpinBox::valueChanged), this,
+                [refreshOnChange](int){ refreshOnChange(); });
 
     connect(bb, &QDialogButtonBox::accepted, filterDlg_, &QDialog::accept);
     connect(bb, &QDialogButtonBox::rejected, filterDlg_, &QDialog::reject);
@@ -666,8 +693,10 @@ void McMainWindow::ensureFilterDialog()
             ? McViewWidget::FilterAction::Remove
             : McViewWidget::FilterAction::Add;
         view_->commitFilter(mode, act,
-                            fdGCb_->isChecked(), fdGSb_->value(),
-                            fdRCb_->isChecked(), fdRSb_->value());
+                            fdGCb_->isChecked(),   fdGSb_->value(),
+                            fdRCb_->isChecked(),   fdRSb_->value(),
+                            fdNumCb_->isChecked(), fdNumSb_->value(),
+                            fdExtCb_->isChecked(), fdExtSb_->value());
     });
     connect(filterDlg_, &QDialog::rejected, this, [this]() {
         view_->cancelPolygon();
@@ -684,11 +713,15 @@ void McMainWindow::filterDialogRefresh()
         ? McViewWidget::FilterAction::Remove
         : McViewWidget::FilterAction::Add;
     const bool addMode = (act == McViewWidget::FilterAction::Add);
-    fdGLbl_->setText(addMode ? "G ≤ (keep strong):" : "G ≥ (drop weak):");
-    fdRLbl_->setText(addMode ? "avg R ≤ (confident):" : "avg R ≥ (bg-like):");
+    fdGLbl_->setText(addMode ? "G ≤ (keep strong):"      : "G ≥ (drop weak):");
+    fdRLbl_->setText(addMode ? "avg R ≤ (confident):"     : "avg R ≥ (bg-like):");
+    fdNumLbl_->setText(addMode ? "num px ≥ (big enough):" : "num px ≤ (small):");
+    fdExtLbl_->setText(addMode ? "extent ≥ (long):"        : "extent ≤ (short):");
     const int n = view_->setFilterPreview(mode, act,
-                                          fdGCb_->isChecked(), fdGSb_->value(),
-                                          fdRCb_->isChecked(), fdRSb_->value());
+                                          fdGCb_->isChecked(),   fdGSb_->value(),
+                                          fdRCb_->isChecked(),   fdRSb_->value(),
+                                          fdNumCb_->isChecked(), fdNumSb_->value(),
+                                          fdExtCb_->isChecked(), fdExtSb_->value());
     const QLocale loc = QLocale::system();
     fdCountLbl_->setText(QString("would affect %1 px").arg(loc.toString(n)));
 }

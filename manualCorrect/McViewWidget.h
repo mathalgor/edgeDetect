@@ -67,7 +67,9 @@ public:
     // Apply filter parameters: emits editOp(pts, action==Add) and updates
     // out_/vis_. Drops the polygon afterwards.
     void commitFilter(FilterMode mode, FilterAction action,
-                      bool useG, int gMax, bool useR, int rMax);
+                      bool useG, int gMax, bool useR, int rMax,
+                      bool useNum, int numThr,
+                      bool useExt, int extThr);
     void cancelPolygon();
     // Right-click menu actions.
     void selectWhole();        // polyMask_ = entire image rect; opens filter
@@ -76,13 +78,18 @@ public:
     bool hasLastPolygon() const { return !lastPolyVerts_.empty(); }
     // Counts (for the filter dialog labels): how many pixels would change
     // if the filter were applied with these parameters.
+    // useG/useR gate the per-component G / avg-R thresholds (Add uses ≤,
+    // Remove uses ≥). useNum / useExt gate size-based filters: Add keeps
+    // only components with size ≥ numThr and max bbox dim ≥ extThr; Remove
+    // keeps only components with size ≤ numThr and max bbox dim ≤ extThr.
     int  filterCountIf(FilterMode mode, FilterAction action,
-                       bool useG, int gMax, bool useR, int rMax) const;
-    // Live preview: compute the affected-pixel mask for these parameters,
-    // store it, repaint, and return the pixel count. The mask is shown as
-    // cyan (Add) or magenta (Remove) on top of the polygon overlay.
+                       bool useG, int gMax, bool useR, int rMax,
+                       bool useNum, int numThr,
+                       bool useExt, int extThr) const;
     int  setFilterPreview(FilterMode mode, FilterAction action,
-                          bool useG, int gMax, bool useR, int rMax);
+                          bool useG, int gMax, bool useR, int rMax,
+                          bool useNum, int numThr,
+                          bool useExt, int extThr);
     void clearFilterPreview();
     // True when the captured polygon has at least one segment touching it
     // — needed for sanity in the dialog.
@@ -146,6 +153,7 @@ private:
     std::vector<int>   labelSize_;
     std::vector<uchar> labelGray_;         // src gray value per label
     std::vector<uchar> labelAvgR_;         // average R per label
+    std::vector<int>   labelExtent_;       // max(bbox width, height) per label
 
     // Polygon-in-progress (vertex sequence) and rasterized mask (when closed).
     std::vector<cv::Point> polyVerts_;

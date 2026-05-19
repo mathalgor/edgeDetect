@@ -86,8 +86,14 @@ private:
     class QCheckBox* fdRCb_        = nullptr;
     class CountSnapSpinBox* fdGSb_ = nullptr;
     class CountSnapSpinBox* fdRSb_ = nullptr;
+    class QCheckBox* fdNumCb_      = nullptr;
+    class QCheckBox* fdExtCb_      = nullptr;
+    class QSpinBox*  fdNumSb_      = nullptr;
+    class QSpinBox*  fdExtSb_      = nullptr;
     class QLabel*    fdGLbl_       = nullptr;
     class QLabel*    fdRLbl_       = nullptr;
+    class QLabel*    fdNumLbl_     = nullptr;
+    class QLabel*    fdExtLbl_     = nullptr;
     class QLabel*    fdCountLbl_   = nullptr;
     void ensureFilterDialog();
     void filterDialogRefresh();

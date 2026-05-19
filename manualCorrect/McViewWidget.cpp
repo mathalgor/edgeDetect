@@ -5,6 +5,7 @@
 #include <QKeyEvent>
 #include <QPixmap>
 
+#include "ComponentExtent.h"
 #include "CursorUtils.h"
 #include <QMouseEvent>
 #include <QPainter>
@@ -266,6 +267,7 @@ void McViewWidget::analyzeComponents()
     labelSize_.assign(1, 0);
     labelGray_.assign(1, 255);
     labelAvgR_.assign(1, 0);
+    labelExtent_.assign(1, 0);
     if (srcGray_.empty()) return;
 
     const int H = srcGray_.rows, W = srcGray_.cols;
@@ -288,12 +290,12 @@ void McViewWidget::analyzeComponents()
             if (g == 255) continue;
             const int L = nextLabel++;
             rowL[x] = L;
-            int size = 0;
+            std::vector<cv::Point> comp;
             std::uint64_t sumR = 0;
             q.push({x, y});
             while (!q.empty()) {
                 auto [cx, cy] = q.front(); q.pop();
-                ++size;
+                comp.emplace_back(cx, cy);
                 sumR += probR_.at<uchar>(cy, cx);
                 for (int k = 0; k < nN; ++k) {
                     const int nx = cx + dx[k], ny = cy + dy[k];
@@ -304,10 +306,13 @@ void McViewWidget::analyzeComponents()
                     q.push({nx, ny});
                 }
             }
+            const int size = static_cast<int>(comp.size());
             labelSize_.push_back(size);
             labelGray_.push_back(g);
             labelAvgR_.push_back(static_cast<uchar>(
                 std::min<std::uint64_t>(255, sumR / std::max(1, size))));
+            labelExtent_.push_back(
+                static_cast<int>(std::ceil(componentExtent(comp))));
         }
     }
 }
@@ -452,7 +457,9 @@ void McViewWidget::applyOp(const std::vector<cv::Point>& pts, bool add)
 }
 
 int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
-                                bool useG, int gMax, bool useR, int rMax) const
+                                bool useG, int gMax, bool useR, int rMax,
+                                bool useNum, int numThr,
+                                bool useExt, int extThr) const
 {
     if (polyMask_.empty() || labels_.empty()) return 0;
     const int H = srcGray_.rows, W = srcGray_.cols;
@@ -480,11 +487,15 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
         // Each criterion is gated by its checkbox; when off it doesn't
         // restrict eligibility.
         if (action == FilterAction::Add) {
-            if (useG && labelGray_[L] > gMax) continue;
-            if (useR && labelAvgR_[L] > rMax) continue;
+            if (useG   && labelGray_[L]   > gMax)   continue;
+            if (useR   && labelAvgR_[L]   > rMax)   continue;
+            if (useNum && labelSize_[L]   < numThr) continue;
+            if (useExt && labelExtent_[L] < extThr) continue;
         } else {
-            if (useG && labelGray_[L] < gMax) continue;
-            if (useR && labelAvgR_[L] < rMax) continue;
+            if (useG   && labelGray_[L]   < gMax)   continue;
+            if (useR   && labelAvgR_[L]   < rMax)   continue;
+            if (useNum && labelSize_[L]   > numThr) continue;
+            if (useExt && labelExtent_[L] > extThr) continue;
         }
         eligible[L] = 1;
     }
@@ -507,7 +518,9 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
 }
 
 int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
-                                   bool useG, int gMax, bool useR, int rMax)
+                                   bool useG, int gMax, bool useR, int rMax,
+                                   bool useNum, int numThr,
+                                   bool useExt, int extThr)
 {
     if (polyMask_.empty() || labels_.empty()) {
         clearFilterPreview();
@@ -537,11 +550,15 @@ int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
         // Each criterion is gated by its checkbox; when off it doesn't
         // restrict eligibility.
         if (action == FilterAction::Add) {
-            if (useG && labelGray_[L] > gMax) continue;
-            if (useR && labelAvgR_[L] > rMax) continue;
+            if (useG   && labelGray_[L]   > gMax)   continue;
+            if (useR   && labelAvgR_[L]   > rMax)   continue;
+            if (useNum && labelSize_[L]   < numThr) continue;
+            if (useExt && labelExtent_[L] < extThr) continue;
         } else {
-            if (useG && labelGray_[L] < gMax) continue;
-            if (useR && labelAvgR_[L] < rMax) continue;
+            if (useG   && labelGray_[L]   < gMax)   continue;
+            if (useR   && labelAvgR_[L]   < rMax)   continue;
+            if (useNum && labelSize_[L]   > numThr) continue;
+            if (useExt && labelExtent_[L] > extThr) continue;
         }
         eligible[L] = 1;
     }
@@ -575,7 +592,9 @@ void McViewWidget::clearFilterPreview()
 }
 
 void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
-                                bool useG, int gMax, bool useR, int rMax)
+                                bool useG, int gMax, bool useR, int rMax,
+                                bool useNum, int numThr,
+                                bool useExt, int extThr)
 {
     if (polyMask_.empty() || labels_.empty()) { cancelPolygon(); return; }
     const int H = srcGray_.rows, W = srcGray_.cols;
@@ -602,11 +621,15 @@ void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
         // Each criterion is gated by its checkbox; when off it doesn't
         // restrict eligibility.
         if (action == FilterAction::Add) {
-            if (useG && labelGray_[L] > gMax) continue;
-            if (useR && labelAvgR_[L] > rMax) continue;
+            if (useG   && labelGray_[L]   > gMax)   continue;
+            if (useR   && labelAvgR_[L]   > rMax)   continue;
+            if (useNum && labelSize_[L]   < numThr) continue;
+            if (useExt && labelExtent_[L] < extThr) continue;
         } else {
-            if (useG && labelGray_[L] < gMax) continue;
-            if (useR && labelAvgR_[L] < rMax) continue;
+            if (useG   && labelGray_[L]   < gMax)   continue;
+            if (useR   && labelAvgR_[L]   < rMax)   continue;
+            if (useNum && labelSize_[L]   > numThr) continue;
+            if (useExt && labelExtent_[L] > extThr) continue;
         }
         eligible[L] = 1;
     }

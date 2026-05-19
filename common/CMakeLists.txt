@@ -3,6 +3,8 @@ find_package(OpenCV REQUIRED)
 add_library(edgeDetectCommon STATIC
         AppConfig.cpp
         AppConfig.h
+        ComponentExtent.cpp
+        ComponentExtent.h
         CountSnapSpinBox.h
         CursorUtils.cpp
         CursorUtils.h
