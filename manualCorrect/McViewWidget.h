@@ -99,7 +99,9 @@ protected:
     void mouseMoveEvent(QMouseEvent* e) override;
     void mouseReleaseEvent(QMouseEvent* e) override;
     void keyPressEvent(QKeyEvent* e) override;
+    void keyReleaseEvent(QKeyEvent* e) override;
     void leaveEvent(QEvent* e) override;
+    void enterEvent(QEnterEvent* e) override;
 
 private:
     QPointF widgetToImage(const QPoint& p) const;
@@ -112,6 +114,12 @@ private:
     bool isPolyComplete() const { return !polyMask_.empty(); }
     void emitHud(const QPoint& widgetPos);
     cv::Mat rasterizePolygon(const std::vector<cv::Point>& verts) const;
+    void updateCursorForMods(Qt::KeyboardModifiers m);
+    // Returns label > 0 nearest to (cx, cy) within radius (image pixels)
+    // whose pixels are currently 255 in outResult_. Returns 0 if none.
+    int pickEraseLabelNear(int cx, int cy, int radius) const;
+    // Removes all out_ pixels belonging to label L, emits editOp, applies.
+    void eraseLabel(int L);
 
     cv::Mat outIn_;        // CV_8UC1 (internal 255=line) — original input outline (read-only)
     cv::Mat outResult_;    // CV_8UC1 (internal 255=line) — the edited result

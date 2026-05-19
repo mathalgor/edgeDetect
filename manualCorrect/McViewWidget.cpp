@@ -1,6 +1,9 @@
 #include "McViewWidget.h"
 
+#include <QApplication>
+#include <QCursor>
 #include <QKeyEvent>
+#include <QPixmap>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -15,12 +18,81 @@
 
 static constexpr int kMinPolyVerts = 3;
 
+static QCursor makeEraserCursor()
+{
+    const int d = 18;
+    QPixmap pm(d, d);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(Qt::white, 2));
+    p.drawEllipse(1, 1, d - 3, d - 3);
+    p.setPen(QPen(Qt::black, 1));
+    p.drawEllipse(1, 1, d - 3, d - 3);
+    p.end();
+    return QCursor(pm, d / 2, d / 2);
+}
+
 McViewWidget::McViewWidget(QWidget* parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     buildDefaultPresets();
+}
+
+void McViewWidget::updateCursorForMods(Qt::KeyboardModifiers m)
+{
+    if (editLocked_ || vis_.isNull()) { setCursor(Qt::ArrowCursor); return; }
+    if (m & Qt::ControlModifier) {
+        static const QCursor eraser = makeEraserCursor();
+        setCursor(eraser);
+    } else {
+        setCursor(Qt::ArrowCursor);
+    }
+}
+
+int McViewWidget::pickEraseLabelNear(int cx, int cy, int radius) const
+{
+    if (labels_.empty() || outResult_.empty()) return 0;
+    const int H = labels_.rows, W = labels_.cols;
+    int best = 0;
+    int bestD2 = std::numeric_limits<int>::max();
+    const int r2 = radius * radius;
+    for (int dy = -radius; dy <= radius; ++dy) {
+        const int y = cy + dy;
+        if (y < 0 || y >= H) continue;
+        for (int dx = -radius; dx <= radius; ++dx) {
+            const int x = cx + dx;
+            if (x < 0 || x >= W) continue;
+            const int d2 = dx * dx + dy * dy;
+            if (d2 > r2 || d2 >= bestD2) continue;
+            const int L = labels_.at<int>(y, x);
+            if (L == 0) continue;
+            if (outResult_.at<uchar>(y, x) != 255) continue;
+            best = L;
+            bestD2 = d2;
+        }
+    }
+    return best;
+}
+
+void McViewWidget::eraseLabel(int L)
+{
+    if (L <= 0 || labels_.empty()) return;
+    std::vector<cv::Point> pts;
+    const int H = labels_.rows, W = labels_.cols;
+    for (int y = 0; y < H; ++y) {
+        const int* rowL = labels_.ptr<int>(y);
+        const uchar* rowOut = outResult_.ptr<uchar>(y);
+        for (int x = 0; x < W; ++x) {
+            if (rowL[x] == L && rowOut[x] == 255)
+                pts.emplace_back(x, y);
+        }
+    }
+    if (pts.empty()) return;
+    applyOp(pts, false);
+    emit editOp(std::move(pts), false);
 }
 
 void McViewWidget::buildDefaultPresets()
@@ -647,6 +719,16 @@ void McViewWidget::mousePressEvent(QMouseEvent* e)
         emit contextMenuRequested(e->globalPosition().toPoint());
         return;
     }
+    if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::ControlModifier)) {
+        if (editLocked_) { emit editBlocked(); return; }
+        const QPointF ip = widgetToImage(e->pos());
+        const int ix = static_cast<int>(std::floor(ip.x()));
+        const int iy = static_cast<int>(std::floor(ip.y()));
+        if (ix < 0 || iy < 0 || ix >= srcGray_.cols || iy >= srcGray_.rows) return;
+        const int L = pickEraseLabelNear(ix, iy, 6);
+        if (L > 0) eraseLabel(L);
+        return;
+    }
     if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::ShiftModifier)) {
         if (editLocked_) { emit editBlocked(); return; }
         const QPointF ip = widgetToImage(e->pos());
@@ -688,6 +770,7 @@ void McViewWidget::mouseMoveEvent(QMouseEvent* e)
         update();
         return;
     }
+    updateCursorForMods(e->modifiers());
     if (polyOpen_) {
         const QPointF ip = widgetToImage(e->pos());
         polyHover_ = QPoint(static_cast<int>(std::floor(ip.x())),
@@ -716,12 +799,27 @@ void McViewWidget::keyPressEvent(QKeyEvent* e)
         closePolygonAndEmit();
         return;
     }
+    if (e->key() == Qt::Key_Control)
+        updateCursorForMods(e->modifiers() | Qt::ControlModifier);
     QWidget::keyPressEvent(e);
+}
+
+void McViewWidget::keyReleaseEvent(QKeyEvent* e)
+{
+    if (e->key() == Qt::Key_Control)
+        updateCursorForMods(e->modifiers() & ~Qt::ControlModifier);
+    QWidget::keyReleaseEvent(e);
+}
+
+void McViewWidget::enterEvent(QEnterEvent*)
+{
+    updateCursorForMods(QApplication::keyboardModifiers());
 }
 
 void McViewWidget::leaveEvent(QEvent*)
 {
     polyHoverValid_ = false;
+    setCursor(Qt::ArrowCursor);
     update();
 }
 
