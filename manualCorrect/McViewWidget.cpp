@@ -316,7 +316,7 @@ void McViewWidget::rebuildVisualization()
 {
     if (srcGray_.empty()) { vis_ = QImage(); return; }
     const int H = srcGray_.rows, W = srcGray_.cols;
-    vis_ = QImage(W, H, QImage::Format_RGBA8888);
+    vis_ = QImage(W, H, QImage::Format_ARGB32);
 
     const Preset& pr = presets_[presetIndex_];
     const Bg bgMode = pr.bg;
@@ -343,7 +343,8 @@ void McViewWidget::rebuildVisualization()
                 }
                 break;
             case Bg::Gray: {
-                const int v = 255 - rowG[x];
+                // G=255 = bg (white), G=0 = strong edge (black) — no inversion.
+                const int v = rowG[x];
                 br = bg = bb = v;
                 break;
             }
@@ -718,7 +719,7 @@ void McViewWidget::paintEvent(QPaintEvent*)
     } else if (!polyMask_.empty()) {
         // Preview pixels (cyan = will be added, magenta = will be removed).
         if (!previewMask_.empty()) {
-            QImage overlay(previewMask_.cols, previewMask_.rows, QImage::Format_RGBA8888);
+            QImage overlay(previewMask_.cols, previewMask_.rows, QImage::Format_ARGB32);
             overlay.fill(0);
             const QRgb prevCol = previewIsAdd_
                 ? qRgba(0, 230, 230, 230)
