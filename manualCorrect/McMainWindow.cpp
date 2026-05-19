@@ -1,6 +1,7 @@
 #include "McMainWindow.h"
 #include "McViewWidget.h"
 #include "ProjectDialog.h"
+#include "CountSnapSpinBox.h"
 
 #include <QAction>
 #include <QApplication>
@@ -564,13 +565,35 @@ void McMainWindow::onPolygonFinished()
     actCb->addItem("Add to result",      1);
     actCb->setCurrentIndex(lastAction_);
 
-    auto* gSb = new QSpinBox(dlg);
-    gSb->setRange(0, 255); gSb->setValue(lastGMax_);
-    gSb->setToolTip("Max segment G (edge gray) — strict ≤; lower keeps stronger edges only");
+    auto modeFn = [modeCb]{
+        return modeCb->currentIndex() == 0
+            ? McViewWidget::FilterMode::Touching
+            : McViewWidget::FilterMode::Inside;
+    };
+    auto actFn = [actCb]{
+        return actCb->currentIndex() == 0
+            ? McViewWidget::FilterAction::Remove
+            : McViewWidget::FilterAction::Add;
+    };
 
-    auto* rSb = new QSpinBox(dlg);
+    auto* gSb = new CountSnapSpinBox(dlg, [](int){ return 0; });
+    gSb->setRange(0, 255); gSb->setValue(lastGMax_);
+    gSb->setAccelerated(true);
+    gSb->setToolTip("Max segment G (edge gray) — ≤; step jumps to next value "
+                    "where the affected-pixel count changes");
+
+    auto* rSb = new CountSnapSpinBox(dlg, [](int){ return 0; });
     rSb->setRange(0, 255); rSb->setValue(lastRMax_);
-    rSb->setToolTip("Max segment avg R (prob inverted) — strict ≤; lower keeps more-confident edges only");
+    rSb->setAccelerated(true);
+    rSb->setToolTip("Max segment avg R (prob inverted) — ≤; step jumps to next "
+                    "value where the affected-pixel count changes");
+
+    gSb->setCountFn([this, modeFn, actFn, rSb](int g) {
+        return view_->filterCountIf(modeFn(), actFn(), g, rSb->value());
+    });
+    rSb->setCountFn([this, modeFn, actFn, gSb](int r) {
+        return view_->filterCountIf(modeFn(), actFn(), gSb->value(), r);
+    });
 
     auto* countLbl = new QLabel(dlg);
 
