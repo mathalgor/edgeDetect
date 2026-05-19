@@ -263,9 +263,39 @@ void McViewWidget::closePolygonAndEmit()
 {
     if (polyVerts_.size() < kMinPolyVerts) return;
     polyMask_ = rasterizePolygon(polyVerts_);
+    lastPolyVerts_ = polyVerts_;
     polyVerts_.clear();
     polyOpen_ = false;
     polyHoverValid_ = false;
+    update();
+    emit polygonFinished();
+}
+
+void McViewWidget::selectWhole()
+{
+    if (srcGray_.empty()) return;
+    polyVerts_.clear();
+    polyOpen_ = false;
+    polyHoverValid_ = false;
+    polyMask_ = cv::Mat(srcGray_.size(), CV_8UC1, cv::Scalar(255));
+    previewMask_.release();
+    update();
+    emit polygonFinished();
+}
+
+void McViewWidget::selectNone()
+{
+    cancelPolygon();
+}
+
+void McViewWidget::restoreLastPolygon()
+{
+    if (lastPolyVerts_.size() < kMinPolyVerts || srcGray_.empty()) return;
+    polyVerts_.clear();
+    polyOpen_ = false;
+    polyHoverValid_ = false;
+    polyMask_ = rasterizePolygon(lastPolyVerts_);
+    previewMask_.release();
     update();
     emit polygonFinished();
 }
@@ -566,6 +596,10 @@ void McViewWidget::wheelEvent(QWheelEvent* e)
 void McViewWidget::mousePressEvent(QMouseEvent* e)
 {
     if (vis_.isNull()) return;
+    if (e->button() == Qt::RightButton) {
+        emit contextMenuRequested(e->globalPosition().toPoint());
+        return;
+    }
     if (e->button() == Qt::MiddleButton ||
         (e->button() == Qt::LeftButton && (e->modifiers() & Qt::ControlModifier))) {
         panning_ = true;

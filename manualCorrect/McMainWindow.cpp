@@ -175,6 +175,18 @@ void McMainWindow::createUi()
     connect(view_, &McViewWidget::dirtyChanged,     this, &McMainWindow::onDirtyChanged);
     connect(view_, &McViewWidget::editOp,           this, &McMainWindow::onEditOp);
     connect(view_, &McViewWidget::polygonFinished,  this, &McMainWindow::onPolygonFinished);
+    connect(view_, &McViewWidget::contextMenuRequested, this, [this](QPoint gp) {
+        if (view_->editLocked()) { emit view_->editBlocked(); return; }
+        QMenu m(this);
+        auto* aWhole = m.addAction("Select whole");
+        auto* aNone  = m.addAction("Select none");
+        auto* aRest  = m.addAction("Restore last selection");
+        aRest->setEnabled(view_->hasLastPolygon());
+        QAction* chosen = m.exec(gp);
+        if (chosen == aWhole) view_->selectWhole();
+        else if (chosen == aNone) view_->selectNone();
+        else if (chosen == aRest) view_->restoreLastPolygon();
+    });
     connect(aUndo_, &QAction::triggered, this, &McMainWindow::onUndo);
     connect(aRedo_, &QAction::triggered, this, &McMainWindow::onRedo);
 

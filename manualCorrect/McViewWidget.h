@@ -63,6 +63,11 @@ public:
     void commitFilter(FilterMode mode, FilterAction action,
                       int gMax, int rMax);
     void cancelPolygon();
+    // Right-click menu actions.
+    void selectWhole();        // polyMask_ = entire image rect; opens filter
+    void selectNone();         // alias for cancelPolygon()
+    void restoreLastPolygon(); // re-rasterizes the last user-drawn polygon
+    bool hasLastPolygon() const { return !lastPolyVerts_.empty(); }
     // Counts (for the filter dialog labels): how many pixels would change
     // if the filter were applied with these parameters.
     int  filterCountIf(FilterMode mode, FilterAction action,
@@ -83,6 +88,7 @@ signals:
     void editOp(std::vector<cv::Point> pts, bool add);
     void editBlocked();
     void polygonFinished();
+    void contextMenuRequested(QPoint globalPos);
 
 protected:
     void paintEvent(QPaintEvent* e) override;
@@ -126,6 +132,7 @@ private:
     QPoint                 polyHover_;            // last mouse pos in image coords (for rubber line)
     bool                   polyHoverValid_ = false;
     cv::Mat                polyMask_;             // 0/255 mask of closed polygon (empty otherwise)
+    std::vector<cv::Point> lastPolyVerts_;        // last user-drawn polygon (for Restore)
 
     bool dirty_ = false;
     bool editLocked_ = false;
