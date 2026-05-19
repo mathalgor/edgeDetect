@@ -938,9 +938,10 @@ void McViewWidget::mousePressEvent(QMouseEvent* e)
     if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::ShiftModifier)) {
         if (editLocked_) { emit editBlocked(); return; }
         const QPointF ip = widgetToImage(e->pos());
+        // Vertices may lie outside the image rect so the polygon can reach
+        // right up to (or past) the image border; rasterization clips.
         const int ix = static_cast<int>(std::floor(ip.x()));
         const int iy = static_cast<int>(std::floor(ip.y()));
-        if (ix < 0 || iy < 0 || ix >= srcGray_.cols || iy >= srcGray_.rows) return;
         if (!polyOpen_) {
             polyMask_.release();
             closedPolyVerts_.clear();
