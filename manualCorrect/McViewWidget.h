@@ -69,7 +69,8 @@ public:
     void commitFilter(FilterMode mode, FilterAction action,
                       bool useG, int gMax, bool useR, int rMax,
                       bool useNum, int numThr,
-                      bool useExt, int extThr);
+                      bool useExt, int extThr,
+                      bool useResultBlobs);
     void cancelPolygon();
     // Right-click menu actions.
     void selectWhole();        // polyMask_ = entire image rect; opens filter
@@ -82,14 +83,20 @@ public:
     // Remove uses ≥). useNum / useExt gate size-based filters: Add keeps
     // only components with size ≥ numThr and max bbox dim ≥ extThr; Remove
     // keeps only components with size ≤ numThr and max bbox dim ≤ extThr.
+    // useResultBlobs (Remove only): when true, num/extent thresholds compare
+    // against connected components of outResult_ (binary CC, same conn) so
+    // small isolated clusters can be removed even when they span multiple
+    // G segments. Ignored when action == Add.
     int  filterCountIf(FilterMode mode, FilterAction action,
                        bool useG, int gMax, bool useR, int rMax,
                        bool useNum, int numThr,
-                       bool useExt, int extThr) const;
+                       bool useExt, int extThr,
+                       bool useResultBlobs) const;
     int  setFilterPreview(FilterMode mode, FilterAction action,
                           bool useG, int gMax, bool useR, int rMax,
                           bool useNum, int numThr,
-                          bool useExt, int extThr);
+                          bool useExt, int extThr,
+                          bool useResultBlobs);
     void clearFilterPreview();
     // True when the captured polygon has at least one segment touching it
     // — needed for sanity in the dialog.
@@ -122,6 +129,11 @@ private:
     void applyZoomAt(const QPoint& anchor, double factor);
     void rebuildVisualization();
     void analyzeComponents();
+    // Computes binary CC of outResult_==255 with current connectivity,
+    // filling blobLabels (CV_32S), blobSize and blobExtent.
+    void computeResultBlobs(cv::Mat& blobLabels,
+                            std::vector<int>& blobSize,
+                            std::vector<int>& blobExtent) const;
     void buildDefaultPresets();
     void closePolygonAndEmit();
     bool isPolyComplete() const { return !polyMask_.empty(); }

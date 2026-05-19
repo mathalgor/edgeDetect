@@ -613,6 +613,12 @@ void McMainWindow::ensureFilterDialog()
     fdExtSb_->setAccelerated(true);
     fdExtSb_->setEnabled(false);
 
+    fdBlobCb_ = new QCheckBox("num/extent on result blobs (Remove)", filterDlg_);
+    fdBlobCb_->setToolTip("When on, num-pixels and extent compare against "
+                          "connected components of the current result mask "
+                          "(binary CC), not against same-G segments. "
+                          "Only affects Remove.");
+
     auto curParams = [this]() {
         return std::tuple{
             (fdModeCb_->currentIndex() == 0)
@@ -628,7 +634,8 @@ void McMainWindow::ensureFilterDialog()
         return view_->filterCountIf(mode, act, true, g,
             fdRCb_->isChecked(), fdRSb_->value(),
             fdNumCb_->isChecked(), fdNumSb_->value(),
-            fdExtCb_->isChecked(), fdExtSb_->value());
+            fdExtCb_->isChecked(), fdExtSb_->value(),
+            fdBlobCb_->isChecked());
     });
     fdRSb_->setCountFn([this, curParams](int r) {
         auto [mode, act] = curParams();
@@ -636,7 +643,8 @@ void McMainWindow::ensureFilterDialog()
             fdGCb_->isChecked(), fdGSb_->value(),
             true, r,
             fdNumCb_->isChecked(), fdNumSb_->value(),
-            fdExtCb_->isChecked(), fdExtSb_->value());
+            fdExtCb_->isChecked(), fdExtSb_->value(),
+            fdBlobCb_->isChecked());
     });
 
     fdGLbl_   = new QLabel("G:");
@@ -662,6 +670,7 @@ void McMainWindow::ensureFilterDialog()
     lay->addRow(fdRLbl_,    makeRow(fdRCb_,   fdRSb_));
     lay->addRow(fdNumLbl_,  makeRow(fdNumCb_, fdNumSb_));
     lay->addRow(fdExtLbl_,  makeRow(fdExtCb_, fdExtSb_));
+    lay->addRow(fdBlobCb_);
     lay->addRow(fdCountLbl_);
     lay->addRow(bb);
 
@@ -675,7 +684,7 @@ void McMainWindow::ensureFilterDialog()
             this, [refreshOnChange](int){ refreshOnChange(); });
     connect(fdActCb_,  QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [refreshOnChange](int){ refreshOnChange(); });
-    for (auto* cb : {fdGCb_, fdRCb_, fdNumCb_, fdExtCb_})
+    for (auto* cb : {fdGCb_, fdRCb_, fdNumCb_, fdExtCb_, fdBlobCb_})
         connect(cb, &QCheckBox::toggled, this,
                 [refreshOnChange](bool){ refreshOnChange(); });
     for (QSpinBox* sb : std::initializer_list<QSpinBox*>{
@@ -696,7 +705,8 @@ void McMainWindow::ensureFilterDialog()
                             fdGCb_->isChecked(),   fdGSb_->value(),
                             fdRCb_->isChecked(),   fdRSb_->value(),
                             fdNumCb_->isChecked(), fdNumSb_->value(),
-                            fdExtCb_->isChecked(), fdExtSb_->value());
+                            fdExtCb_->isChecked(), fdExtSb_->value(),
+                            fdBlobCb_->isChecked());
     });
     connect(filterDlg_, &QDialog::rejected, this, [this]() {
         view_->cancelPolygon();
@@ -717,11 +727,13 @@ void McMainWindow::filterDialogRefresh()
     fdRLbl_->setText(addMode ? "avg R ≤ (confident):"     : "avg R ≥ (bg-like):");
     fdNumLbl_->setText(addMode ? "num px ≥ (big enough):" : "num px ≤ (small):");
     fdExtLbl_->setText(addMode ? "extent ≥ (long):"        : "extent ≤ (short):");
+    fdBlobCb_->setEnabled(!addMode);
     const int n = view_->setFilterPreview(mode, act,
                                           fdGCb_->isChecked(),   fdGSb_->value(),
                                           fdRCb_->isChecked(),   fdRSb_->value(),
                                           fdNumCb_->isChecked(), fdNumSb_->value(),
-                                          fdExtCb_->isChecked(), fdExtSb_->value());
+                                          fdExtCb_->isChecked(), fdExtSb_->value(),
+                                          fdBlobCb_->isChecked());
     const QLocale loc = QLocale::system();
     fdCountLbl_->setText(QString("would affect %1 px").arg(loc.toString(n)));
 }

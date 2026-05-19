@@ -456,14 +456,67 @@ void McViewWidget::applyOp(const std::vector<cv::Point>& pts, bool add)
     update();
 }
 
+void McViewWidget::computeResultBlobs(cv::Mat& blobLabels,
+                                      std::vector<int>& blobSize,
+                                      std::vector<int>& blobExtent) const
+{
+    blobLabels = cv::Mat::zeros(outResult_.size(), CV_32S);
+    blobSize.assign(1, 0);
+    blobExtent.assign(1, 0);
+    if (outResult_.empty()) return;
+
+    const int H = outResult_.rows, W = outResult_.cols;
+    const int dx8[8] = {-1, 0, 1, -1, 1, -1, 0, 1};
+    const int dy8[8] = {-1,-1,-1,  0, 0,  1, 1, 1};
+    const int dx4[4] = {-1, 1, 0, 0};
+    const int dy4[4] = { 0, 0,-1, 1};
+    const int nN = conn8_ ? 8 : 4;
+    const int* dx = conn8_ ? dx8 : dx4;
+    const int* dy = conn8_ ? dy8 : dy4;
+
+    int next = 1;
+    std::queue<std::pair<int,int>> q;
+    for (int y = 0; y < H; ++y) {
+        for (int x = 0; x < W; ++x) {
+            if (blobLabels.at<int>(y, x) != 0) continue;
+            if (outResult_.at<uchar>(y, x) != 255) continue;
+            const int B = next++;
+            blobLabels.at<int>(y, x) = B;
+            std::vector<cv::Point> comp;
+            q.push({x, y});
+            while (!q.empty()) {
+                auto [cx, cy] = q.front(); q.pop();
+                comp.emplace_back(cx, cy);
+                for (int k = 0; k < nN; ++k) {
+                    const int nx = cx + dx[k], ny = cy + dy[k];
+                    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+                    if (blobLabels.at<int>(ny, nx) != 0) continue;
+                    if (outResult_.at<uchar>(ny, nx) != 255) continue;
+                    blobLabels.at<int>(ny, nx) = B;
+                    q.push({nx, ny});
+                }
+            }
+            blobSize.push_back(static_cast<int>(comp.size()));
+            blobExtent.push_back(static_cast<int>(std::ceil(componentExtent(comp))));
+        }
+    }
+}
+
 int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
                                 bool useG, int gMax, bool useR, int rMax,
                                 bool useNum, int numThr,
-                                bool useExt, int extThr) const
+                                bool useExt, int extThr,
+                                bool useResultBlobs) const
 {
     if (polyMask_.empty() || labels_.empty()) return 0;
     const int H = srcGray_.rows, W = srcGray_.cols;
     const int nL = static_cast<int>(labelSize_.size());
+
+    const bool blobMode = useResultBlobs && action == FilterAction::Remove;
+    cv::Mat blobLabels;
+    std::vector<int> blobSize, blobExtent;
+    if (blobMode && (useNum || useExt))
+        computeResultBlobs(blobLabels, blobSize, blobExtent);
 
     std::vector<int> labelInMask(nL, 0);   // pixels of label inside polyMask
     for (int y = 0; y < H; ++y) {
@@ -484,18 +537,20 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
         if (wantInside && !fullyInside) continue;
         // Add picks confident-edge segments (low G, low R = strong edge);
         // Remove picks weak/uncertain segments (high G, high R = bg-like).
-        // Each criterion is gated by its checkbox; when off it doesn't
-        // restrict eligibility.
+        // In blob mode (Remove only) num/ext compare per result-blob, not
+        // per G-segment, so they're skipped in this label-level filter.
         if (action == FilterAction::Add) {
             if (useG   && labelGray_[L]   > gMax)   continue;
             if (useR   && labelAvgR_[L]   > rMax)   continue;
             if (useNum && labelSize_[L]   < numThr) continue;
             if (useExt && labelExtent_[L] < extThr) continue;
         } else {
-            if (useG   && labelGray_[L]   < gMax)   continue;
-            if (useR   && labelAvgR_[L]   < rMax)   continue;
-            if (useNum && labelSize_[L]   > numThr) continue;
-            if (useExt && labelExtent_[L] > extThr) continue;
+            if (useG && labelGray_[L] < gMax) continue;
+            if (useR && labelAvgR_[L] < rMax) continue;
+            if (!blobMode) {
+                if (useNum && labelSize_[L]   > numThr) continue;
+                if (useExt && labelExtent_[L] > extThr) continue;
+            }
         }
         eligible[L] = 1;
     }
@@ -505,13 +560,22 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
         const int* rowL = labels_.ptr<int>(y);
         const uchar* rowOut = outResult_.ptr<uchar>(y);
         const uchar* rowM = polyMask_.ptr<uchar>(y);
+        const int* rowB = (blobMode && (useNum || useExt))
+            ? blobLabels.ptr<int>(y) : nullptr;
         for (int x = 0; x < W; ++x) {
             const int L = rowL[x];
             if (L == 0 || !eligible[L]) continue;
             if (mode == FilterMode::Touching && !rowM[x]) continue;
             const bool isIn = rowOut[x] == 255;
             if (action == FilterAction::Add && !isIn) ++n;
-            else if (action == FilterAction::Remove && isIn) ++n;
+            else if (action == FilterAction::Remove && isIn) {
+                if (rowB) {
+                    const int B = rowB[x];
+                    if (useNum && blobSize[B]   > numThr) continue;
+                    if (useExt && blobExtent[B] > extThr) continue;
+                }
+                ++n;
+            }
         }
     }
     return n;
@@ -520,7 +584,8 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
 int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
                                    bool useG, int gMax, bool useR, int rMax,
                                    bool useNum, int numThr,
-                                   bool useExt, int extThr)
+                                   bool useExt, int extThr,
+                                   bool useResultBlobs)
 {
     if (polyMask_.empty() || labels_.empty()) {
         clearFilterPreview();
@@ -528,6 +593,12 @@ int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
     }
     const int H = srcGray_.rows, W = srcGray_.cols;
     const int nL = static_cast<int>(labelSize_.size());
+
+    const bool blobMode = useResultBlobs && action == FilterAction::Remove;
+    cv::Mat blobLabels;
+    std::vector<int> blobSize, blobExtent;
+    if (blobMode && (useNum || useExt))
+        computeResultBlobs(blobLabels, blobSize, blobExtent);
 
     std::vector<int> labelInMask(nL, 0);
     for (int y = 0; y < H; ++y) {
@@ -547,18 +618,20 @@ int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
         if (wantInside && !fullyInside) continue;
         // Add picks confident-edge segments (low G, low R = strong edge);
         // Remove picks weak/uncertain segments (high G, high R = bg-like).
-        // Each criterion is gated by its checkbox; when off it doesn't
-        // restrict eligibility.
+        // In blob mode (Remove only) num/ext compare per result-blob, not
+        // per G-segment, so they're skipped in this label-level filter.
         if (action == FilterAction::Add) {
             if (useG   && labelGray_[L]   > gMax)   continue;
             if (useR   && labelAvgR_[L]   > rMax)   continue;
             if (useNum && labelSize_[L]   < numThr) continue;
             if (useExt && labelExtent_[L] < extThr) continue;
         } else {
-            if (useG   && labelGray_[L]   < gMax)   continue;
-            if (useR   && labelAvgR_[L]   < rMax)   continue;
-            if (useNum && labelSize_[L]   > numThr) continue;
-            if (useExt && labelExtent_[L] > extThr) continue;
+            if (useG && labelGray_[L] < gMax) continue;
+            if (useR && labelAvgR_[L] < rMax) continue;
+            if (!blobMode) {
+                if (useNum && labelSize_[L]   > numThr) continue;
+                if (useExt && labelExtent_[L] > extThr) continue;
+            }
         }
         eligible[L] = 1;
     }
@@ -571,13 +644,22 @@ int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
         const uchar* rowOut = outResult_.ptr<uchar>(y);
         const uchar* rowM = polyMask_.ptr<uchar>(y);
         uchar* rowP = previewMask_.ptr<uchar>(y);
+        const int* rowB = (blobMode && (useNum || useExt))
+            ? blobLabels.ptr<int>(y) : nullptr;
         for (int x = 0; x < W; ++x) {
             const int L = rowL[x];
             if (L == 0 || !eligible[L]) continue;
             if (mode == FilterMode::Touching && !rowM[x]) continue;
             const bool isIn = rowOut[x] == 255;
             if (action == FilterAction::Add && !isIn) { rowP[x] = 255; ++n; }
-            else if (action == FilterAction::Remove && isIn) { rowP[x] = 255; ++n; }
+            else if (action == FilterAction::Remove && isIn) {
+                if (rowB) {
+                    const int B = rowB[x];
+                    if (useNum && blobSize[B]   > numThr) continue;
+                    if (useExt && blobExtent[B] > extThr) continue;
+                }
+                rowP[x] = 255; ++n;
+            }
         }
     }
     update();
@@ -594,11 +676,18 @@ void McViewWidget::clearFilterPreview()
 void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
                                 bool useG, int gMax, bool useR, int rMax,
                                 bool useNum, int numThr,
-                                bool useExt, int extThr)
+                                bool useExt, int extThr,
+                                bool useResultBlobs)
 {
     if (polyMask_.empty() || labels_.empty()) { cancelPolygon(); return; }
     const int H = srcGray_.rows, W = srcGray_.cols;
     const int nL = static_cast<int>(labelSize_.size());
+
+    const bool blobMode = useResultBlobs && action == FilterAction::Remove;
+    cv::Mat blobLabels;
+    std::vector<int> blobSize, blobExtent;
+    if (blobMode && (useNum || useExt))
+        computeResultBlobs(blobLabels, blobSize, blobExtent);
 
     std::vector<int> labelInMask(nL, 0);
     for (int y = 0; y < H; ++y) {
@@ -618,18 +707,20 @@ void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
         if (wantInside && !fullyInside) continue;
         // Add picks confident-edge segments (low G, low R = strong edge);
         // Remove picks weak/uncertain segments (high G, high R = bg-like).
-        // Each criterion is gated by its checkbox; when off it doesn't
-        // restrict eligibility.
+        // In blob mode (Remove only) num/ext compare per result-blob, not
+        // per G-segment, so they're skipped in this label-level filter.
         if (action == FilterAction::Add) {
             if (useG   && labelGray_[L]   > gMax)   continue;
             if (useR   && labelAvgR_[L]   > rMax)   continue;
             if (useNum && labelSize_[L]   < numThr) continue;
             if (useExt && labelExtent_[L] < extThr) continue;
         } else {
-            if (useG   && labelGray_[L]   < gMax)   continue;
-            if (useR   && labelAvgR_[L]   < rMax)   continue;
-            if (useNum && labelSize_[L]   > numThr) continue;
-            if (useExt && labelExtent_[L] > extThr) continue;
+            if (useG && labelGray_[L] < gMax) continue;
+            if (useR && labelAvgR_[L] < rMax) continue;
+            if (!blobMode) {
+                if (useNum && labelSize_[L]   > numThr) continue;
+                if (useExt && labelExtent_[L] > extThr) continue;
+            }
         }
         eligible[L] = 1;
     }
@@ -639,13 +730,22 @@ void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
         const int* rowL = labels_.ptr<int>(y);
         const uchar* rowOut = outResult_.ptr<uchar>(y);
         const uchar* rowM = polyMask_.ptr<uchar>(y);
+        const int* rowB = (blobMode && (useNum || useExt))
+            ? blobLabels.ptr<int>(y) : nullptr;
         for (int x = 0; x < W; ++x) {
             const int L = rowL[x];
             if (L == 0 || !eligible[L]) continue;
             if (mode == FilterMode::Touching && !rowM[x]) continue;
             const bool isIn = rowOut[x] == 255;
             if (action == FilterAction::Add && !isIn) pts.emplace_back(x, y);
-            else if (action == FilterAction::Remove && isIn) pts.emplace_back(x, y);
+            else if (action == FilterAction::Remove && isIn) {
+                if (rowB) {
+                    const int B = rowB[x];
+                    if (useNum && blobSize[B]   > numThr) continue;
+                    if (useExt && blobExtent[B] > extThr) continue;
+                }
+                pts.emplace_back(x, y);
+            }
         }
     }
 
