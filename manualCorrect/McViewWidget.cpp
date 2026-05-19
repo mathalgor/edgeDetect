@@ -26,11 +26,9 @@ McViewWidget::McViewWidget(QWidget* parent)
 void McViewWidget::buildDefaultPresets()
 {
     presets_ = {
-        {"Original",        Bg::Original, false},
-        {"Original + In",   Bg::Original, true },
-        {"Gray (G)",        Bg::Gray,     false},
-        {"Gray + In",       Bg::Gray,     true },
-        {"Prob (R)",        Bg::Prob,     false},
+        {"Result only",       Bg::Plain,    true,  false},
+        {"Original",          Bg::Original, false, false},
+        {"Original + Result", Bg::Original, true,  false},
     };
     presetIndex_ = 0;
 }
@@ -207,6 +205,7 @@ void McViewWidget::rebuildVisualization()
 
     const Preset& pr = presets_[presetIndex_];
     const Bg bgMode = pr.bg;
+    const bool showResult = pr.showResult;
     const bool showIn = pr.showInputOutline && !outIn_.empty();
 
     for (int y = 0; y < H; ++y) {
@@ -218,6 +217,7 @@ void McViewWidget::rebuildVisualization()
         for (int x = 0; x < W; ++x) {
             int br = 255, bg = 255, bb = 255;
             switch (bgMode) {
+            case Bg::Plain: break;
             case Bg::Original:
                 if (!originalRgba_.empty()) {
                     const cv::Vec4b& p = originalRgba_.at<cv::Vec4b>(y, x);
@@ -233,19 +233,16 @@ void McViewWidget::rebuildVisualization()
                 break;
             }
             case Bg::Prob: {
-                // R=0 strong edge → red; R=255 strong bg → blue.
                 const int r = 255 - rowR[x];
                 const int b = rowR[x];
                 br = r; bg = 0; bb = b;
                 break;
             }
             }
-            if (rowIn && rowIn[x] == 255 && rowOut[x] != 255) {
-                // Input outline pixels that aren't (yet) in result → blue.
+            if (showIn && rowIn && rowIn[x] == 255 && rowOut[x] != 255) {
                 br = 40; bg = 80; bb = 230;
             }
-            if (rowOut[x] == 255) {
-                // Green overlay for result outline (wins over blue).
+            if (showResult && rowOut[x] == 255) {
                 br = 0; bg = 200; bb = 0;
             }
             row[x] = qRgba(br, bg, bb, 255);

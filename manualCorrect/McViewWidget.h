@@ -13,13 +13,14 @@ class McViewWidget : public QWidget {
 public:
     explicit McViewWidget(QWidget* parent = nullptr);
 
-    enum class Bg { Original, Gray, Prob };
+    enum class Bg { Plain, Original, Gray, Prob };
     enum class FilterMode { Inside, Touching };
     enum class FilterAction { Remove, Add };
 
     struct Preset {
         QString name;
         Bg      bg;
+        bool    showResult;
         bool    showInputOutline;
     };
 
