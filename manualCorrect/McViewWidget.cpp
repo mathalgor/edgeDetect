@@ -102,13 +102,17 @@ void McViewWidget::penLabel(int L)
 }
 
 McViewWidget::EditPick
-McViewWidget::pickEditTargetNear(int cx, int cy, int radius) const
+McViewWidget::pickEditTargetNear(int cx, int cy, int radius,
+                                 bool allowPen) const
 {
     EditPick pick;
     if (labels_.empty() || outResult_.empty()) return pick;
     const int H = labels_.rows, W = labels_.cols;
-    int bestD2 = std::numeric_limits<int>::max();
     const int r2 = radius * radius;
+
+    // Pass 1: prefer the closest pixel that's already in the result. Erase
+    // always wins over pen, since pen is a fallback for blank areas.
+    int bestD2 = std::numeric_limits<int>::max();
     for (int dy = -radius; dy <= radius; ++dy) {
         const int y = cy + dy;
         if (y < 0 || y >= H) continue;
@@ -117,11 +121,29 @@ McViewWidget::pickEditTargetNear(int cx, int cy, int radius) const
             if (x < 0 || x >= W) continue;
             const int d2 = dx * dx + dy * dy;
             if (d2 > r2 || d2 >= bestD2) continue;
-            const bool isOut = outResult_.at<uchar>(y, x) == 255;
+            if (outResult_.at<uchar>(y, x) != 255) continue;
+            pick.label    = labels_.at<int>(y, x);
+            pick.inResult = true;
+            bestD2 = d2;
+        }
+    }
+    if (pick.inResult) return pick;
+    if (!allowPen) return pick;
+
+    // Pass 2: no result pixel near — closest gray-segment pixel for pen.
+    bestD2 = std::numeric_limits<int>::max();
+    for (int dy = -radius; dy <= radius; ++dy) {
+        const int y = cy + dy;
+        if (y < 0 || y >= H) continue;
+        for (int dx = -radius; dx <= radius; ++dx) {
+            const int x = cx + dx;
+            if (x < 0 || x >= W) continue;
+            const int d2 = dx * dx + dy * dy;
+            if (d2 > r2 || d2 >= bestD2) continue;
             const int L = labels_.at<int>(y, x);
-            if (!isOut && L == 0) continue;
-            pick.label = L;
-            pick.inResult = isOut;
+            if (L == 0) continue;
+            pick.label    = L;
+            pick.inResult = false;
             bestD2 = d2;
         }
     }
@@ -915,16 +937,15 @@ void McViewWidget::mousePressEvent(QMouseEvent* e)
         const int ix = static_cast<int>(std::floor(ip.x()));
         const int iy = static_cast<int>(std::floor(ip.y()));
         if (ix < 0 || iy < 0 || ix >= srcGray_.cols || iy >= srcGray_.rows) return;
-        const EditPick pick = pickEditTargetNear(ix, iy, 6);
+        const Bg bg = presets_[presetIndex_].bg;
+        const bool grayShown = (bg == Bg::Gray || bg == Bg::GrayRed);
+        const EditPick pick = pickEditTargetNear(ix, iy, 6, grayShown);
         if (pick.inResult) {
             const int L = pick.label > 0 ? pick.label
                                           : pickEraseLabelNear(ix, iy, 6);
             if (L > 0) eraseLabel(L);
-        } else if (pick.label > 0) {
-            // Pen mode (add a gray segment) only when a gray bg is shown.
-            const Bg bg = presets_[presetIndex_].bg;
-            if (bg == Bg::Gray || bg == Bg::GrayRed)
-                penLabel(pick.label);
+        } else if (pick.label > 0 && grayShown) {
+            penLabel(pick.label);
         }
         return;
     }

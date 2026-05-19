@@ -156,7 +156,8 @@ private:
     // Returns label > 0 and a flag indicating whether it's currently in
     // the result; (0, false) if nothing within radius.
     struct EditPick { int label = 0; bool inResult = false; };
-    EditPick pickEditTargetNear(int cx, int cy, int radius) const;
+    EditPick pickEditTargetNear(int cx, int cy, int radius,
+                                bool allowPen) const;
 
     cv::Mat outIn_;        // CV_8UC1 (internal 255=line) — original input outline (read-only)
     cv::Mat outResult_;    // CV_8UC1 (internal 255=line) — the edited result
