@@ -20,6 +20,28 @@ McViewWidget::McViewWidget(QWidget* parent)
 {
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
+    buildDefaultPresets();
+}
+
+void McViewWidget::buildDefaultPresets()
+{
+    presets_ = {
+        {"Original",        Bg::Original, false},
+        {"Original + In",   Bg::Original, true },
+        {"Gray (G)",        Bg::Gray,     false},
+        {"Gray + In",       Bg::Gray,     true },
+        {"Prob (R)",        Bg::Prob,     false},
+    };
+    presetIndex_ = 0;
+}
+
+void McViewWidget::setPresetIndex(int i)
+{
+    if (i < 0 || i >= static_cast<int>(presets_.size())) return;
+    if (i == presetIndex_) return;
+    presetIndex_ = i;
+    rebuildVisualization();
+    update();
 }
 
 void McViewWidget::setData(const cv::Mat& inOutlineFileFmt,
@@ -108,13 +130,6 @@ void McViewWidget::setConn8(bool on)
     }
 }
 
-void McViewWidget::setBackground(Bg b)
-{
-    if (bg_ == b) return;
-    bg_ = b;
-    rebuildVisualization();
-    update();
-}
 
 void McViewWidget::setEditLocked(bool on)
 {
@@ -190,14 +205,19 @@ void McViewWidget::rebuildVisualization()
     const int H = srcGray_.rows, W = srcGray_.cols;
     vis_ = QImage(W, H, QImage::Format_RGBA8888);
 
+    const Preset& pr = presets_[presetIndex_];
+    const Bg bgMode = pr.bg;
+    const bool showIn = pr.showInputOutline && !outIn_.empty();
+
     for (int y = 0; y < H; ++y) {
         QRgb* row = reinterpret_cast<QRgb*>(vis_.scanLine(y));
         const uchar* rowG = srcGray_.ptr<uchar>(y);
         const uchar* rowR = probR_.ptr<uchar>(y);
         const uchar* rowOut = outResult_.ptr<uchar>(y);
+        const uchar* rowIn  = showIn ? outIn_.ptr<uchar>(y) : nullptr;
         for (int x = 0; x < W; ++x) {
             int br = 255, bg = 255, bb = 255;
-            switch (bg_) {
+            switch (bgMode) {
             case Bg::Original:
                 if (!originalRgba_.empty()) {
                     const cv::Vec4b& p = originalRgba_.at<cv::Vec4b>(y, x);
@@ -220,8 +240,12 @@ void McViewWidget::rebuildVisualization()
                 break;
             }
             }
+            if (rowIn && rowIn[x] == 255 && rowOut[x] != 255) {
+                // Input outline pixels that aren't (yet) in result → blue.
+                br = 40; bg = 80; bb = 230;
+            }
             if (rowOut[x] == 255) {
-                // Green overlay for result outline.
+                // Green overlay for result outline (wins over blue).
                 br = 0; bg = 200; bb = 0;
             }
             row[x] = qRgba(br, bg, bb, 255);
@@ -255,6 +279,7 @@ void McViewWidget::cancelPolygon()
     polyOpen_ = false;
     polyHoverValid_ = false;
     polyMask_.release();
+    previewMask_.release();
     update();
 }
 
@@ -317,6 +342,65 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
     return n;
 }
 
+int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
+                                   int gMax, int rMax)
+{
+    if (polyMask_.empty() || labels_.empty()) {
+        clearFilterPreview();
+        return 0;
+    }
+    const int H = srcGray_.rows, W = srcGray_.cols;
+    const int nL = static_cast<int>(labelSize_.size());
+
+    std::vector<int> labelInMask(nL, 0);
+    for (int y = 0; y < H; ++y) {
+        const int* rowL = labels_.ptr<int>(y);
+        const uchar* rowM = polyMask_.ptr<uchar>(y);
+        for (int x = 0; x < W; ++x) {
+            const int L = rowL[x];
+            if (L == 0) continue;
+            if (rowM[x]) ++labelInMask[L];
+        }
+    }
+    std::vector<uchar> eligible(nL, 0);
+    for (int L = 1; L < nL; ++L) {
+        if (labelInMask[L] == 0) continue;
+        const bool fullyInside = labelInMask[L] == labelSize_[L];
+        const bool wantInside = (mode == FilterMode::Inside);
+        if (wantInside && !fullyInside) continue;
+        if (labelGray_[L] > gMax) continue;
+        if (labelAvgR_[L] > rMax) continue;
+        eligible[L] = 1;
+    }
+
+    previewMask_ = cv::Mat::zeros(srcGray_.size(), CV_8UC1);
+    previewIsAdd_ = (action == FilterAction::Add);
+    int n = 0;
+    for (int y = 0; y < H; ++y) {
+        const int* rowL = labels_.ptr<int>(y);
+        const uchar* rowOut = outResult_.ptr<uchar>(y);
+        const uchar* rowM = polyMask_.ptr<uchar>(y);
+        uchar* rowP = previewMask_.ptr<uchar>(y);
+        for (int x = 0; x < W; ++x) {
+            const int L = rowL[x];
+            if (L == 0 || !eligible[L]) continue;
+            if (mode == FilterMode::Touching && !rowM[x]) continue;
+            const bool isIn = rowOut[x] == 255;
+            if (action == FilterAction::Add && !isIn) { rowP[x] = 255; ++n; }
+            else if (action == FilterAction::Remove && isIn) { rowP[x] = 255; ++n; }
+        }
+    }
+    update();
+    return n;
+}
+
+void McViewWidget::clearFilterPreview()
+{
+    if (previewMask_.empty()) return;
+    previewMask_.release();
+    update();
+}
+
 void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
                                 int gMax, int rMax)
 {
@@ -361,6 +445,7 @@ void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
     }
 
     polyMask_.release();
+    previewMask_.release();
     update();
     if (pts.empty()) return;
     applyOp(pts, action == FilterAction::Add);
@@ -449,14 +534,22 @@ void McViewWidget::paintEvent(QPaintEvent*)
             p.drawEllipse(QPointF(v.x + 0.5, v.y + 0.5), 2.0 / scale_, 2.0 / scale_);
         }
     } else if (!polyMask_.empty()) {
-        // Show captured polygon as translucent overlay.
+        // Captured polygon (yellow fill) + optional preview pixels overlay
+        // (cyan = will be added, magenta = will be removed).
         QImage overlay(polyMask_.cols, polyMask_.rows, QImage::Format_RGBA8888);
         overlay.fill(0);
+        const bool havePrev = !previewMask_.empty();
+        const QRgb prevCol = previewIsAdd_
+            ? qRgba(0, 230, 230, 230)        // cyan
+            : qRgba(230, 0, 230, 230);       // magenta
         for (int y = 0; y < polyMask_.rows; ++y) {
             QRgb* row = reinterpret_cast<QRgb*>(overlay.scanLine(y));
             const uchar* m = polyMask_.ptr<uchar>(y);
-            for (int x = 0; x < polyMask_.cols; ++x)
-                if (m[x]) row[x] = qRgba(255, 200, 0, 70);
+            const uchar* pv = havePrev ? previewMask_.ptr<uchar>(y) : nullptr;
+            for (int x = 0; x < polyMask_.cols; ++x) {
+                if (pv && pv[x]) row[x] = prevCol;
+                else if (m[x])   row[x] = qRgba(255, 200, 0, 50);
+            }
         }
         p.drawImage(0, 0, overlay);
     }

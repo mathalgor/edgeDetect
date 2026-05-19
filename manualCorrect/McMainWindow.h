@@ -42,7 +42,7 @@ private slots:
     void onFit();
     void onOneToOne();
     void onConn8Toggled(bool on);
-    void onBgChanged(int i);
+    void onPresetChanged(int i);
     void onHud(const QString& s);
     void onDirtyChanged(bool d);
     void onEditOp(std::vector<cv::Point> pts, bool add);
@@ -74,7 +74,7 @@ private:
     QAction* aRedo_ = nullptr;
     QSpinBox* fileSpin_ = nullptr;
     QCheckBox* conn8Cb_ = nullptr;
-    QComboBox* bgCb_ = nullptr;
+    QComboBox* presetCb_ = nullptr;
     QPushButton* doneBtn_ = nullptr;
     QMenu* recentMenu_ = nullptr;
 

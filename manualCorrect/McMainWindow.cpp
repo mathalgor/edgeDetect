@@ -94,11 +94,11 @@ void McMainWindow::createUi()
     tb->addWidget(conn8Cb_);
     tb->addSeparator();
     tb->addWidget(new QLabel("View:"));
-    bgCb_ = new QComboBox();
-    bgCb_->addItem("Original", int(McViewWidget::Bg::Original));
-    bgCb_->addItem("Gray (G)", int(McViewWidget::Bg::Gray));
-    bgCb_->addItem("Prob (R)", int(McViewWidget::Bg::Prob));
-    tb->addWidget(bgCb_);
+    presetCb_ = new QComboBox();
+    presetCb_->setToolTip("View preset — press 1..N to switch");
+    for (const auto& pr : view_->presets()) presetCb_->addItem(pr.name);
+    presetCb_->setCurrentIndex(view_->presetIndex());
+    tb->addWidget(presetCb_);
 
     auto* spacer = new QWidget();
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -157,8 +157,8 @@ void McMainWindow::createUi()
     connect(aFit,      &QAction::triggered, this, &McMainWindow::onFit);
     connect(aOne,      &QAction::triggered, this, &McMainWindow::onOneToOne);
     connect(conn8Cb_,  &QCheckBox::toggled, this, &McMainWindow::onConn8Toggled);
-    connect(bgCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &McMainWindow::onBgChanged);
+    connect(presetCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &McMainWindow::onPresetChanged);
 
     connect(fileSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this,
             [this](int v) {
@@ -177,10 +177,10 @@ void McMainWindow::createUi()
     connect(aUndo_, &QAction::triggered, this, &McMainWindow::onUndo);
     connect(aRedo_, &QAction::triggered, this, &McMainWindow::onRedo);
 
-    // Digit shortcuts for view background.
-    for (int i = 0; i < bgCb_->count() && i < 9; ++i) {
+    for (int i = 0; i < presetCb_->count() && i < 9; ++i) {
         auto* sc = new QShortcut(QKeySequence(Qt::Key_1 + i), this);
-        connect(sc, &QShortcut::activated, this, [this, i]{ bgCb_->setCurrentIndex(i); });
+        connect(sc, &QShortcut::activated, this,
+                [this, i]{ presetCb_->setCurrentIndex(i); });
     }
 
     qApp->installEventFilter(this);
@@ -498,10 +498,10 @@ void McMainWindow::onOneToOne() { view_->zoomOneToOne(); }
 
 void McMainWindow::onConn8Toggled(bool on) { view_->setConn8(on); }
 
-void McMainWindow::onBgChanged(int i)
+void McMainWindow::onPresetChanged(int i)
 {
     if (i < 0) return;
-    view_->setBackground(static_cast<McViewWidget::Bg>(bgCb_->itemData(i).toInt()));
+    view_->setPresetIndex(i);
 }
 
 void McMainWindow::onHud(const QString& s) { hudLabel_->setText(s); }
@@ -592,7 +592,7 @@ void McMainWindow::onPolygonFinished()
         const auto act = (actCb->currentIndex() == 0)
             ? McViewWidget::FilterAction::Remove
             : McViewWidget::FilterAction::Add;
-        const int n = view_->filterCountIf(mode, act, gSb->value(), rSb->value());
+        const int n = view_->setFilterPreview(mode, act, gSb->value(), rSb->value());
         const QLocale loc = QLocale::system();
         countLbl->setText(QString("would affect %1 px").arg(loc.toString(n)));
     };

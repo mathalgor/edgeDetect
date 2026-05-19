@@ -17,6 +17,12 @@ public:
     enum class FilterMode { Inside, Touching };
     enum class FilterAction { Remove, Add };
 
+    struct Preset {
+        QString name;
+        Bg      bg;
+        bool    showInputOutline;
+    };
+
     // outFileFmt is optional — if empty, output starts as a copy of the input
     // outline. dbgrg is BGR: B=0, G=gray edge level, R=inverted prob.
     void setData(const cv::Mat& inOutlineFileFmt,
@@ -32,8 +38,9 @@ public:
     void setConn8(bool on);
     bool conn8() const { return conn8_; }
 
-    void setBackground(Bg b);
-    Bg   background() const { return bg_; }
+    const std::vector<Preset>& presets() const { return presets_; }
+    int  presetIndex() const { return presetIndex_; }
+    void setPresetIndex(int i);
 
     // Edit lock (Done state)
     void setEditLocked(bool on);
@@ -59,6 +66,12 @@ public:
     // if the filter were applied with these parameters.
     int  filterCountIf(FilterMode mode, FilterAction action,
                        int gMax, int rMax) const;
+    // Live preview: compute the affected-pixel mask for these parameters,
+    // store it, repaint, and return the pixel count. The mask is shown as
+    // cyan (Add) or magenta (Remove) on top of the polygon overlay.
+    int  setFilterPreview(FilterMode mode, FilterAction action,
+                          int gMax, int rMax);
+    void clearFilterPreview();
     // True when the captured polygon has at least one segment touching it
     // — needed for sanity in the dialog.
     bool polygonHasComponents() const { return !polyMask_.empty(); }
@@ -87,6 +100,7 @@ private:
     void applyZoomAt(const QPoint& anchor, double factor);
     void rebuildVisualization();
     void analyzeComponents();
+    void buildDefaultPresets();
     void closePolygonAndEmit();
     bool isPolyComplete() const { return !polyMask_.empty(); }
     void emitHud(const QPoint& widgetPos);
@@ -115,7 +129,12 @@ private:
     bool dirty_ = false;
     bool editLocked_ = false;
     bool conn8_ = true;
-    Bg   bg_ = Bg::Original;
+    std::vector<Preset> presets_;
+    int  presetIndex_ = 0;
+
+    // Live filter preview: 0/255 mask of affected pixels + action color hint.
+    cv::Mat previewMask_;
+    bool    previewIsAdd_ = false;
 
     double  scale_ = 1.0;
     QPointF panOffset_{0, 0};
