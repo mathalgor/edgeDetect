@@ -597,13 +597,14 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
     for (int y = 0; y < H; ++y) {
         const int* rowL = labels_.ptr<int>(y);
         const uchar* rowOut = outResult_.ptr<uchar>(y);
-        const uchar* rowM = polyMask_.ptr<uchar>(y);
         const int* rowB = (blobMode && (useNum || useExt))
             ? blobLabels.ptr<int>(y) : nullptr;
         for (int x = 0; x < W; ++x) {
             const int L = rowL[x];
             if (L == 0 || !eligible[L]) continue;
-            if (mode == FilterMode::Touching && !rowM[x]) continue;
+            // Touching: take the whole eligible component, even pixels
+            // outside the polygon. Inside mode is already enforced by the
+            // per-label eligibility (label is fully inside the polygon).
             const bool isIn = rowOut[x] == 255;
             if (action == FilterAction::Add && !isIn) ++n;
             else if (action == FilterAction::Remove && isIn) {
@@ -680,14 +681,13 @@ int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
     for (int y = 0; y < H; ++y) {
         const int* rowL = labels_.ptr<int>(y);
         const uchar* rowOut = outResult_.ptr<uchar>(y);
-        const uchar* rowM = polyMask_.ptr<uchar>(y);
         uchar* rowP = previewMask_.ptr<uchar>(y);
         const int* rowB = (blobMode && (useNum || useExt))
             ? blobLabels.ptr<int>(y) : nullptr;
         for (int x = 0; x < W; ++x) {
             const int L = rowL[x];
             if (L == 0 || !eligible[L]) continue;
-            if (mode == FilterMode::Touching && !rowM[x]) continue;
+            // Touching: take the whole eligible component (see filterCountIf).
             const bool isIn = rowOut[x] == 255;
             if (action == FilterAction::Add && !isIn) { rowP[x] = 255; ++n; }
             else if (action == FilterAction::Remove && isIn) {
@@ -767,13 +767,14 @@ void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
     for (int y = 0; y < H; ++y) {
         const int* rowL = labels_.ptr<int>(y);
         const uchar* rowOut = outResult_.ptr<uchar>(y);
-        const uchar* rowM = polyMask_.ptr<uchar>(y);
         const int* rowB = (blobMode && (useNum || useExt))
             ? blobLabels.ptr<int>(y) : nullptr;
         for (int x = 0; x < W; ++x) {
             const int L = rowL[x];
             if (L == 0 || !eligible[L]) continue;
-            if (mode == FilterMode::Touching && !rowM[x]) continue;
+            // Touching: take the whole eligible component, even pixels
+            // outside the polygon. Inside mode is already enforced by the
+            // per-label eligibility (label is fully inside the polygon).
             const bool isIn = rowOut[x] == 255;
             if (action == FilterAction::Add && !isIn) pts.emplace_back(x, y);
             else if (action == FilterAction::Remove && isIn) {
