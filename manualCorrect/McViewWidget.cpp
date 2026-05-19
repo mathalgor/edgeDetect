@@ -254,8 +254,9 @@ void McViewWidget::setConn8(bool on)
     if (conn8_ == on) return;
     conn8_ = on;
     if (!srcGray_.empty()) {
-        cancelPolygon();
         analyzeComponents();
+        emit componentsRebuilt();
+        update();
     }
 }
 

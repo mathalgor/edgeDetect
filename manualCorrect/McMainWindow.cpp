@@ -186,6 +186,10 @@ void McMainWindow::createUi()
     connect(view_, &McViewWidget::dirtyChanged,     this, &McMainWindow::onDirtyChanged);
     connect(view_, &McViewWidget::editOp,           this, &McMainWindow::onEditOp);
     connect(view_, &McViewWidget::polygonFinished,  this, &McMainWindow::onPolygonFinished);
+    connect(view_, &McViewWidget::componentsRebuilt, this, [this]() {
+        if (filterDlg_ && filterDlg_->isVisible() && view_->hasPendingPolygon())
+            filterDialogRefresh();
+    });
     connect(view_, &McViewWidget::contextMenuRequested, this, [this](QPoint gp) {
         if (view_->editLocked()) { emit view_->editBlocked(); return; }
         QMenu m(this);

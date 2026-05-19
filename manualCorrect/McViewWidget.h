@@ -114,6 +114,7 @@ signals:
     void editBlocked();
     void polygonFinished();
     void contextMenuRequested(QPoint globalPos);
+    void componentsRebuilt();
 
 protected:
     void paintEvent(QPaintEvent* e) override;
