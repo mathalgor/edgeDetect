@@ -243,7 +243,7 @@ void McViewWidget::rebuildVisualization()
                 br = 40; bg = 80; bb = 230;
             }
             if (showResult && rowOut[x] == 255) {
-                br = 0; bg = 200; bb = 0;
+                br = 0; bg = 0; bb = 0;
             }
             row[x] = qRgba(br, bg, bb, 255);
         }
@@ -347,8 +347,15 @@ int McViewWidget::filterCountIf(FilterMode mode, FilterAction action,
         const bool fullyInside = labelInMask[L] == labelSize_[L];
         const bool wantInside = (mode == FilterMode::Inside);
         if (wantInside && !fullyInside) continue;
-        if (labelGray_[L] > gMax) continue;
-        if (labelAvgR_[L] > rMax) continue;
+        // Add picks confident-edge segments (low G, low R = strong edge);
+        // Remove picks weak/uncertain segments (high G, high R = bg-like).
+        if (action == FilterAction::Add) {
+            if (labelGray_[L] > gMax) continue;
+            if (labelAvgR_[L] > rMax) continue;
+        } else {
+            if (labelGray_[L] < gMax) continue;
+            if (labelAvgR_[L] < rMax) continue;
+        }
         eligible[L] = 1;
     }
 
@@ -395,8 +402,15 @@ int McViewWidget::setFilterPreview(FilterMode mode, FilterAction action,
         const bool fullyInside = labelInMask[L] == labelSize_[L];
         const bool wantInside = (mode == FilterMode::Inside);
         if (wantInside && !fullyInside) continue;
-        if (labelGray_[L] > gMax) continue;
-        if (labelAvgR_[L] > rMax) continue;
+        // Add picks confident-edge segments (low G, low R = strong edge);
+        // Remove picks weak/uncertain segments (high G, high R = bg-like).
+        if (action == FilterAction::Add) {
+            if (labelGray_[L] > gMax) continue;
+            if (labelAvgR_[L] > rMax) continue;
+        } else {
+            if (labelGray_[L] < gMax) continue;
+            if (labelAvgR_[L] < rMax) continue;
+        }
         eligible[L] = 1;
     }
 
@@ -451,8 +465,15 @@ void McViewWidget::commitFilter(FilterMode mode, FilterAction action,
         const bool fullyInside = labelInMask[L] == labelSize_[L];
         const bool wantInside = (mode == FilterMode::Inside);
         if (wantInside && !fullyInside) continue;
-        if (labelGray_[L] > gMax) continue;
-        if (labelAvgR_[L] > rMax) continue;
+        // Add picks confident-edge segments (low G, low R = strong edge);
+        // Remove picks weak/uncertain segments (high G, high R = bg-like).
+        if (action == FilterAction::Add) {
+            if (labelGray_[L] > gMax) continue;
+            if (labelAvgR_[L] > rMax) continue;
+        } else {
+            if (labelGray_[L] < gMax) continue;
+            if (labelAvgR_[L] < rMax) continue;
+        }
         eligible[L] = 1;
     }
 

@@ -613,20 +613,25 @@ void McMainWindow::onPolygonFinished()
 
     auto* lay = new QFormLayout(dlg);
     lay->setContentsMargins(8, 8, 8, 8);
-    lay->addRow("Action:",         actCb);
-    lay->addRow("Spatial:",        modeCb);
-    lay->addRow("G ≤ (edge):",     gSb);
-    lay->addRow("avg R ≤ (prob):", rSb);
+    auto* gLbl = new QLabel("G:");
+    auto* rLbl = new QLabel("avg R:");
+    lay->addRow("Action:",  actCb);
+    lay->addRow("Spatial:", modeCb);
+    lay->addRow(gLbl,       gSb);
+    lay->addRow(rLbl,       rSb);
     lay->addRow(countLbl);
     lay->addRow(bb);
 
-    auto refresh = [this, modeCb, actCb, gSb, rSb, countLbl]() {
+    auto refresh = [this, modeCb, actCb, gSb, rSb, countLbl, gLbl, rLbl]() {
         const auto mode = (modeCb->currentIndex() == 0)
             ? McViewWidget::FilterMode::Touching
             : McViewWidget::FilterMode::Inside;
         const auto act = (actCb->currentIndex() == 0)
             ? McViewWidget::FilterAction::Remove
             : McViewWidget::FilterAction::Add;
+        const bool addMode = (act == McViewWidget::FilterAction::Add);
+        gLbl->setText(addMode ? "G ≤ (keep strong):" : "G ≥ (drop weak):");
+        rLbl->setText(addMode ? "avg R ≤ (confident edge):" : "avg R ≥ (bg-like):");
         const int n = view_->setFilterPreview(mode, act, gSb->value(), rSb->value());
         const QLocale loc = QLocale::system();
         countLbl->setText(QString("would affect %1 px").arg(loc.toString(n)));
