@@ -17,8 +17,8 @@ QString ProjectConfig::validationError() const
     if (!QDir(sourceDir).exists())
         return QStringLiteral("sourceDir does not exist: %1").arg(sourceDir);
     if (outputDir.isEmpty()) return QStringLiteral("outputDir is not set");
-    if (!QDir(outputDir).exists())
-        return QStringLiteral("outputDir does not exist: %1").arg(outputDir);
+    if (!QDir(outputDir).exists() && !QDir().mkpath(outputDir))
+        return QStringLiteral("outputDir cannot be created: %1").arg(outputDir);
     return {};
 }
 
