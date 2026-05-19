@@ -82,14 +82,62 @@ void McViewWidget::eraseLabel(int L)
     emit editOp(std::move(pts), false);
 }
 
+void McViewWidget::penLabel(int L)
+{
+    if (L <= 0 || labels_.empty()) return;
+    std::vector<cv::Point> pts;
+    const int H = labels_.rows, W = labels_.cols;
+    for (int y = 0; y < H; ++y) {
+        const int* rowL = labels_.ptr<int>(y);
+        const uchar* rowOut = outResult_.ptr<uchar>(y);
+        for (int x = 0; x < W; ++x) {
+            if (rowL[x] == L && rowOut[x] == 0)
+                pts.emplace_back(x, y);
+        }
+    }
+    if (pts.empty()) return;
+    applyOp(pts, true);
+    emit editOp(std::move(pts), true);
+}
+
+McViewWidget::EditPick
+McViewWidget::pickEditTargetNear(int cx, int cy, int radius) const
+{
+    EditPick pick;
+    if (labels_.empty() || outResult_.empty()) return pick;
+    const int H = labels_.rows, W = labels_.cols;
+    int bestD2 = std::numeric_limits<int>::max();
+    const int r2 = radius * radius;
+    for (int dy = -radius; dy <= radius; ++dy) {
+        const int y = cy + dy;
+        if (y < 0 || y >= H) continue;
+        for (int dx = -radius; dx <= radius; ++dx) {
+            const int x = cx + dx;
+            if (x < 0 || x >= W) continue;
+            const int d2 = dx * dx + dy * dy;
+            if (d2 > r2 || d2 >= bestD2) continue;
+            const bool isOut = outResult_.at<uchar>(y, x) == 255;
+            const int L = labels_.at<int>(y, x);
+            if (!isOut && L == 0) continue;
+            pick.label = L;
+            pick.inResult = isOut;
+            bestD2 = d2;
+        }
+    }
+    return pick;
+}
+
 void McViewWidget::buildDefaultPresets()
 {
     presets_ = {
         {"Result only",       Bg::Plain,    true,  false},
         {"Original",          Bg::Original, false, false},
         {"Original + Result", Bg::Original, true,  false},
+        {"Gray + Result",     Bg::Gray,     true,  false},
+        {"Gray-red + Result", Bg::GrayRed,  true,  false},
     };
     presetIndex_ = 0;
+    prevPresetIndex_ = 0;
 }
 
 void McViewWidget::setPresetIndex(int i)
@@ -297,6 +345,13 @@ void McViewWidget::rebuildVisualization()
             case Bg::Gray: {
                 const int v = 255 - rowG[x];
                 br = bg = bb = v;
+                break;
+            }
+            case Bg::GrayRed: {
+                // Any edge pixel (G<255) renders as flat red so weak edges
+                // (G≈245) are as visible as strong ones.
+                if (rowG[x] == 255) { br = bg = bb = 255; }
+                else { br = 255; bg = 0; bb = 0; }
                 break;
             }
             case Bg::Prob: {
@@ -720,8 +775,17 @@ void McViewWidget::mousePressEvent(QMouseEvent* e)
         const int ix = static_cast<int>(std::floor(ip.x()));
         const int iy = static_cast<int>(std::floor(ip.y()));
         if (ix < 0 || iy < 0 || ix >= srcGray_.cols || iy >= srcGray_.rows) return;
-        const int L = pickEraseLabelNear(ix, iy, 6);
-        if (L > 0) eraseLabel(L);
+        const EditPick pick = pickEditTargetNear(ix, iy, 6);
+        if (pick.inResult) {
+            const int L = pick.label > 0 ? pick.label
+                                          : pickEraseLabelNear(ix, iy, 6);
+            if (L > 0) eraseLabel(L);
+        } else if (pick.label > 0) {
+            // Pen mode (add a gray segment) only when a gray bg is shown.
+            const Bg bg = presets_[presetIndex_].bg;
+            if (bg == Bg::Gray || bg == Bg::GrayRed)
+                penLabel(pick.label);
+        }
         return;
     }
     if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::ShiftModifier)) {
