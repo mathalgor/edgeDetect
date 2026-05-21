@@ -76,6 +76,7 @@ private slots:
     void onNewProject();
     void onOpenProject();
     void onSetProject();
+    void onExportToDataset();
 
     // save current pair to align.jsonl
     void saveJsonlForCurrent();

@@ -36,6 +36,12 @@
 #include <QWheelEvent>
 #include <QFileInfo>
 #include <QInputDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QLineEdit>
+#include <QStyle>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -124,6 +130,10 @@ void AlignMainWindow::createUi()
     optimalModeAction_->setToolTip("Scans 16 combinations of X²/Y²/R/XY and selects the one with smallest RMS");
     optimalModeAction_->setEnabled(false);
     connect(optimalModeAction_, &QAction::triggered, this, &AlignMainWindow::runOptimalMode);
+
+    toolsMenu->addSeparator();
+    QAction* exportAct = toolsMenu->addAction("&Export to dataset…");
+    connect(exportAct, &QAction::triggered, this, &AlignMainWindow::onExportToDataset);
 
     toolsMenu->addSeparator();
     QAction* timingStatsAction = toolsMenu->addAction("Timing stats…");
@@ -2271,4 +2281,434 @@ void AlignMainWindow::setEditLocked(bool on)
     if (restoreAction_) restoreAction_->setEnabled(en && savedStateValid_);
     if (optimalModeAction_) optimalModeAction_->setEnabled(en && !lastAppliedPins_.isEmpty());
     if (view_) view_->setEditLocked(on);
+}
+
+// ============================================================================
+// Export to dataset
+// ============================================================================
+
+namespace {
+
+struct Coefs {
+    double dX = 0, dY = 0;
+    double aX = 0, aY = 0;
+    double cX = 0, cY = 0;
+    double bXY = 0, bYX = 0;
+    double eXY = 0, eYX = 0;
+};
+
+struct Fitext { bool X2 = false, Y2 = false, R = false, XY = false; };
+
+struct PinIO { double sX, sY, rX, rY; };
+
+// Least-squares fit of polynomial src→outline (centered coords), matching
+// the Python reference (make_dataset.py:fit_transform).
+bool fitCoefs(const std::vector<PinIO>& pins, const Fitext& fx,
+              int srcW, int srcH, int outlineW, int outlineH,
+              Coefs& out)
+{
+    enum { dX, dY, aX, aY, cX, cY, bXY, bYX, eXY, eYX, MAX_KEYS };
+    std::array<int, MAX_KEYS> col;
+    col.fill(-1);
+    int M = 0;
+    auto add = [&](int key) { col[key] = M++; };
+    add(dX); add(dY); add(aX); add(aY);
+    if (fx.X2) add(cX);
+    if (fx.Y2) add(cY);
+    if (fx.R)  { add(bXY); add(bYX); }
+    if (fx.XY) { add(eXY); add(eYX); }
+
+    const int N = int(pins.size());
+    if (N < 2 || N * 2 < M) return false;
+
+    cv::Mat A = cv::Mat::zeros(2 * N, M, CV_64F);
+    cv::Mat b(2 * N, 1, CV_64F);
+
+    const double halfSW = srcW * 0.5,    halfSH = srcH * 0.5;
+    const double halfOW = outlineW * 0.5, halfOH = outlineH * 0.5;
+
+    for (int i = 0; i < N; ++i) {
+        const double sxc = pins[i].sX - halfSW;
+        const double syc = pins[i].sY - halfSH;
+        const double oxc = pins[i].rX - halfOW;
+        const double oyc = pins[i].rY - halfOH;
+
+        double* rowX = A.ptr<double>(2 * i);
+        double* rowY = A.ptr<double>(2 * i + 1);
+
+        rowX[col[dX]] = 1;
+        rowX[col[aX]] = sxc;
+        if (fx.X2) rowX[col[cX]]  = sxc * sxc;
+        if (fx.R)  rowX[col[bXY]] = syc;
+        if (fx.XY) rowX[col[eXY]] = sxc * syc;
+        b.at<double>(2 * i, 0) = oxc;
+
+        rowY[col[dY]] = 1;
+        rowY[col[aY]] = syc;
+        if (fx.Y2) rowY[col[cY]]  = syc * syc;
+        if (fx.R)  rowY[col[bYX]] = sxc;
+        if (fx.XY) rowY[col[eYX]] = sxc * syc;
+        b.at<double>(2 * i + 1, 0) = oyc;
+    }
+
+    cv::Mat x;
+    if (!cv::solve(A, b, x, cv::DECOMP_SVD)) return false;
+
+    auto get = [&](int key) -> double {
+        return col[key] >= 0 ? x.at<double>(col[key], 0) : 0.0;
+    };
+    out.dX  = get(dX);  out.dY  = get(dY);
+    out.aX  = get(aX);  out.aY  = get(aY);
+    out.cX  = get(cX);  out.cY  = get(cY);
+    out.bXY = get(bXY); out.bYX = get(bYX);
+    out.eXY = get(eXY); out.eYX = get(eYX);
+    return true;
+}
+
+// For each (oX, oY) in outline-coords, finds (sX, sY) in src-coords via Newton
+// iteration on the forward polynomial transform.
+void buildInverseMap(const Coefs& p, int outlineW, int outlineH,
+                     int srcW, int srcH,
+                     cv::Mat& mapX, cv::Mat& mapY,
+                     int iters = 8)
+{
+    const double halfOW = outlineW * 0.5, halfOH = outlineH * 0.5;
+    const double halfSW = srcW * 0.5,     halfSH = srcH * 0.5;
+
+    mapX.create(outlineH, outlineW, CV_32F);
+    mapY.create(outlineH, outlineW, CV_32F);
+
+    const double det0 = p.aX * p.aY - p.bXY * p.bYX;
+    const bool linInvOk = std::abs(det0) > 1e-12;
+
+    for (int y = 0; y < outlineH; ++y) {
+        const double oyc = double(y) - halfOH;
+        float* rowX = mapX.ptr<float>(y);
+        float* rowY = mapY.ptr<float>(y);
+        for (int x = 0; x < outlineW; ++x) {
+            const double oxc = double(x) - halfOW;
+            double u, v;
+            const double rx = oxc - p.dX;
+            const double ry = oyc - p.dY;
+            if (linInvOk) {
+                u = ( p.aY  * rx - p.bXY * ry) / det0;
+                v = (-p.bYX * rx + p.aX  * ry) / det0;
+            } else {
+                u = std::abs(p.aX) > 1e-12 ? rx / p.aX : 0.0;
+                v = std::abs(p.aY) > 1e-12 ? ry / p.aY : 0.0;
+            }
+            for (int it = 0; it < iters; ++it) {
+                const double Fx = p.dX + p.aX*u + p.bXY*v + p.cX*u*u + p.eXY*u*v - oxc;
+                const double Fy = p.dY + p.bYX*u + p.aY*v + p.cY*v*v + p.eYX*u*v - oyc;
+                const double Jxx = p.aX  + 2.0*p.cX*u + p.eXY*v;
+                const double Jxy = p.bXY + p.eXY*u;
+                const double Jyx = p.bYX + p.eYX*v;
+                const double Jyy = p.aY  + 2.0*p.cY*v + p.eYX*u;
+                const double det = Jxx*Jyy - Jxy*Jyx;
+                if (std::abs(det) < 1e-14) break;
+                const double du = ( Jyy*Fx - Jxy*Fy) / det;
+                const double dv = (-Jyx*Fx + Jxx*Fy) / det;
+                u -= du;
+                v -= dv;
+            }
+            rowX[x] = float(u + halfSW);
+            rowY[x] = float(v + halfSH);
+        }
+    }
+}
+
+// Greedy shrink: returns rect where every border row/col is fully valid.
+// Returns empty rect if no such rect exists.
+cv::Rect shrinkToValid(const cv::Mat& mask)
+{
+    // mask: 0/1 (CV_8U). Compute initial bbox of non-zero.
+    int H = mask.rows, W = mask.cols;
+    int yMin = H, yMax = -1, xMin = W, xMax = -1;
+    for (int y = 0; y < H; ++y) {
+        const uchar* row = mask.ptr<uchar>(y);
+        for (int x = 0; x < W; ++x) {
+            if (row[x]) {
+                if (y < yMin) yMin = y;
+                if (y > yMax) yMax = y;
+                if (x < xMin) xMin = x;
+                if (x > xMax) xMax = x;
+            }
+        }
+    }
+    if (yMax < 0) return cv::Rect();
+
+    auto rowFull = [&](int y, int x0, int x1) {
+        const uchar* row = mask.ptr<uchar>(y);
+        for (int x = x0; x <= x1; ++x) if (!row[x]) return false;
+        return true;
+    };
+    auto colFull = [&](int x, int y0, int y1) {
+        for (int y = y0; y <= y1; ++y) if (!mask.ptr<uchar>(y)[x]) return false;
+        return true;
+    };
+
+    while (true) {
+        if (yMin > yMax || xMin > xMax) return cv::Rect();
+        bool changed = false;
+        if (!rowFull(yMin, xMin, xMax)) { ++yMin; changed = true; if (yMin > yMax) return cv::Rect(); }
+        if (!rowFull(yMax, xMin, xMax)) { --yMax; changed = true; if (yMax < yMin) return cv::Rect(); }
+        if (!colFull(xMin, yMin, yMax)) { ++xMin; changed = true; if (xMin > xMax) return cv::Rect(); }
+        if (!colFull(xMax, yMin, yMax)) { --xMax; changed = true; if (xMax < xMin) return cv::Rect(); }
+        if (!changed) break;
+    }
+    return cv::Rect(xMin, yMin, xMax - xMin + 1, yMax - yMin + 1);
+}
+
+bool parseJsonlEntry(const QString& jsonLine,
+                     std::vector<PinIO>& pins, Fitext& fx,
+                     int& srcW, int& srcH, int& outlineW, int& outlineH)
+{
+    QJsonParseError err{};
+    const QJsonDocument doc = QJsonDocument::fromJson(jsonLine.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) return false;
+    const QJsonObject o = doc.object();
+    srcW     = o.value("srcW").toInt(0);
+    srcH     = o.value("srcH").toInt(0);
+    outlineW = o.value("outlineW").toInt(0);
+    outlineH = o.value("outlineH").toInt(0);
+    const auto pinsArr = o.value("pins").toArray();
+    pins.clear();
+    pins.reserve(pinsArr.size());
+    for (const auto& v : pinsArr) {
+        const QJsonObject po = v.toObject();
+        PinIO p;
+        p.sX = po.value("sX").toDouble();
+        p.sY = po.value("sY").toDouble();
+        p.rX = po.value("rX").toDouble();
+        p.rY = po.value("rY").toDouble();
+        pins.push_back(p);
+    }
+    const QJsonObject fobj = o.value("fitext").toObject();
+    fx.X2 = fobj.value("X2").toBool(false);
+    fx.Y2 = fobj.value("Y2").toBool(false);
+    fx.R  = fobj.value("R").toBool(false);
+    fx.XY = fobj.value("XY").toBool(false);
+    return srcW > 0 && srcH > 0 && outlineW > 0 && outlineH > 0
+           && pins.size() >= 2;
+}
+
+} // namespace
+
+void AlignMainWindow::onExportToDataset()
+{
+    if (pairs_.isEmpty()) {
+        QMessageBox::information(this, "Export to dataset",
+            "No image pairs in the project.");
+        return;
+    }
+    if (projectPath_.isEmpty()) {
+        QMessageBox::warning(this, "Export to dataset",
+            "Open a project first.");
+        return;
+    }
+
+    // ---- dialog ----
+    QDialog dlg(this);
+    dlg.setWindowTitle("Export to dataset");
+
+    auto* pathEdit = new QLineEdit(&dlg);
+    pathEdit->setText(appConfig_.lastDatasetRoot);
+    pathEdit->setPlaceholderText("dataset root (will be created if missing)");
+    pathEdit->setMinimumWidth(420);
+
+    auto* browseBtn = new QPushButton(&dlg);
+    browseBtn->setIcon(style()->standardIcon(QStyle::SP_DirIcon));
+    browseBtn->setToolTip("Choose folder…");
+    connect(browseBtn, &QPushButton::clicked, &dlg, [&]() {
+        const QString start = pathEdit->text().isEmpty()
+            ? QDir::homePath() : pathEdit->text();
+        const QString d = QFileDialog::getExistingDirectory(
+            &dlg, "Dataset root", start);
+        if (!d.isEmpty()) pathEdit->setText(d);
+    });
+
+    auto* splitCb = new QComboBox(&dlg);
+    splitCb->addItem("train");
+    splitCb->addItem("test");
+    if (appConfig_.lastDatasetSplit == "test") splitCb->setCurrentIndex(1);
+
+    auto* grayCb = new QCheckBox("Convert source to grayscale", &dlg);
+    grayCb->setChecked(appConfig_.lastDatasetToGray);
+
+    auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    auto* form = new QFormLayout;
+    auto* pathRow = new QHBoxLayout;
+    pathRow->addWidget(pathEdit, 1);
+    pathRow->addWidget(browseBtn);
+    auto* pathRowW = new QWidget(&dlg);
+    pathRowW->setLayout(pathRow);
+    form->addRow("Dataset root:", pathRowW);
+    form->addRow("Split:", splitCb);
+    form->addRow(grayCb);
+
+    auto* lay = new QVBoxLayout(&dlg);
+    lay->addLayout(form);
+    lay->addWidget(bb);
+
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    const QString root  = pathEdit->text().trimmed();
+    const QString split = splitCb->currentText();
+    const bool toGray   = grayCb->isChecked();
+    if (root.isEmpty()) return;
+
+    appConfig_.lastDatasetRoot   = root;
+    appConfig_.lastDatasetSplit  = split;
+    appConfig_.lastDatasetToGray = toGray;
+    appConfig_.save();
+
+    const QString srcDir = (split == "train")
+        ? QDir(root).filePath("train/source/real")
+        : QDir(root).filePath("test/source");
+    const QString outDir = (split == "train")
+        ? QDir(root).filePath("train/outline/real")
+        : QDir(root).filePath("test/outline");
+    QDir().mkpath(srcDir);
+    QDir().mkpath(outDir);
+
+    int done = 0, ok = 0, skipNoEntry = 0, skipBadFit = 0, skipBadCrop = 0;
+    QStringList failures;
+    bool aborted = false;
+    bool skipAllMissing = false;
+
+    auto handleMissing = [&](const QString& what, const QString& name) -> int {
+        if (skipAllMissing) return 0;
+        QMessageBox box(QMessageBox::Warning, "Missing " + what,
+            QString("Missing %1 for '%2'.\n\nSkip this file, skip all missing, or abort?")
+                .arg(what, name),
+            QMessageBox::NoButton, this);
+        auto* skipBtn    = box.addButton("Skip", QMessageBox::AcceptRole);
+        auto* skipAllBtn = box.addButton("Skip all missing", QMessageBox::AcceptRole);
+        auto* abortBtn   = box.addButton("Abort", QMessageBox::RejectRole);
+        box.setDefaultButton(skipBtn);
+        box.exec();
+        if (box.clickedButton() == abortBtn) return 1;
+        if (box.clickedButton() == skipAllBtn) skipAllMissing = true;
+        return 0;
+    };
+
+    for (const FilePair& pair : pairs_) {
+        const QString outlineName = QFileInfo(pair.outlinePath).fileName();
+        if (!tracker_.isDone(outlineName)) continue;
+        ++done;
+
+        const QString srcName = QFileInfo(pair.srcPath).fileName();
+        const QString entry = jsonlData_.value(outlineName);
+        if (entry.isEmpty()) {
+            ++skipNoEntry;
+            failures << QString("%1: no JSONL entry").arg(outlineName);
+            continue;
+        }
+        std::vector<PinIO> pins;
+        Fitext fx;
+        int sW = 0, sH = 0, oW = 0, oH = 0;
+        if (!parseJsonlEntry(entry, pins, fx, sW, sH, oW, oH)) {
+            ++skipBadFit;
+            failures << QString("%1: bad JSONL entry").arg(outlineName);
+            continue;
+        }
+
+        cv::Mat src = cv::imread(pair.srcPath.toStdString(), cv::IMREAD_COLOR);
+        cv::Mat outline = cv::imread(pair.outlinePath.toStdString(), cv::IMREAD_GRAYSCALE);
+        if (src.empty()) {
+            if (handleMissing("source image", srcName) == 1) { aborted = true; break; }
+            continue;
+        }
+        if (outline.empty()) {
+            if (handleMissing("outline image", outlineName) == 1) { aborted = true; break; }
+            continue;
+        }
+        if (src.cols != sW || src.rows != sH) {
+            ++skipBadFit;
+            failures << QString("%1: src size %2x%3 != %4x%5")
+                .arg(srcName).arg(src.cols).arg(src.rows).arg(sW).arg(sH);
+            continue;
+        }
+        if (outline.cols != oW || outline.rows != oH) {
+            ++skipBadFit;
+            failures << QString("%1: outline size %2x%3 != %4x%5")
+                .arg(outlineName).arg(outline.cols).arg(outline.rows).arg(oW).arg(oH);
+            continue;
+        }
+
+        Coefs coefs;
+        if (!fitCoefs(pins, fx, sW, sH, oW, oH, coefs)) {
+            ++skipBadFit;
+            failures << QString("%1: fit failed").arg(outlineName);
+            continue;
+        }
+
+        cv::Mat mapX, mapY;
+        buildInverseMap(coefs, oW, oH, sW, sH, mapX, mapY);
+
+        cv::Mat warped;
+        cv::remap(src, warped, mapX, mapY, cv::INTER_LINEAR,
+                  cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+
+        // Valid mask: mapX/mapY land inside src.
+        cv::Mat valid(oH, oW, CV_8U);
+        for (int y = 0; y < oH; ++y) {
+            const float* rx = mapX.ptr<float>(y);
+            const float* ry = mapY.ptr<float>(y);
+            uchar* rm = valid.ptr<uchar>(y);
+            for (int x = 0; x < oW; ++x) {
+                rm[x] = (rx[x] >= 0.0f && rx[x] < float(sW)
+                      && ry[x] >= 0.0f && ry[x] < float(sH)) ? 1 : 0;
+            }
+        }
+        cv::Rect rect = shrinkToValid(valid);
+        if (rect.empty()) {
+            ++skipBadCrop;
+            failures << QString("%1: empty valid mask").arg(outlineName);
+            continue;
+        }
+
+        cv::Mat warpedCrop  = warped(rect).clone();
+        cv::Mat outlineCrop = outline(rect).clone();
+        cv::Mat inverted;
+        cv::bitwise_not(outlineCrop, inverted);
+
+        cv::Mat srcOut;
+        if (toGray) {
+            cv::cvtColor(warpedCrop, srcOut, cv::COLOR_BGR2GRAY);
+        } else {
+            srcOut = warpedCrop;
+        }
+
+        const QString srcDst = QDir(srcDir).filePath(srcName);
+        const QString outDst = QDir(outDir).filePath(outlineName);
+        const bool wSrc = cv::imwrite(srcDst.toStdString(), srcOut);
+        const bool wOut = cv::imwrite(outDst.toStdString(), inverted);
+        if (wSrc && wOut) {
+            ++ok;
+        } else {
+            failures << QString("%1: imwrite failed").arg(outlineName);
+        }
+    }
+
+    QString msg;
+    msg += QString("Split: %1\n").arg(split);
+    msg += QString("Source dir:  %1\n").arg(srcDir);
+    msg += QString("Outline dir: %1\n\n").arg(outDir);
+    msg += QString("Done pairs: %1\n").arg(done);
+    msg += QString("Exported:   %1\n").arg(ok);
+    msg += QString("Skipped:    %1 no JSONL entry, %2 bad fit, %3 bad crop\n")
+        .arg(skipNoEntry).arg(skipBadFit).arg(skipBadCrop);
+    if (aborted) msg += "\nExport aborted by user.";
+    if (!failures.isEmpty()) {
+        msg += "\nIssues:\n";
+        for (int i = 0; i < std::min(20, int(failures.size())); ++i)
+            msg += "  " + failures[i] + "\n";
+        if (failures.size() > 20)
+            msg += QString("  …(+%1 more)\n").arg(failures.size() - 20);
+    }
+    QMessageBox::information(this, "Export to dataset", msg);
 }

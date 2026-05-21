@@ -13,6 +13,7 @@ struct AppConfig {
     int mruSize = 20;
     QString lastDatasetRoot;
     QString lastDatasetSplit = "train";
+    bool    lastDatasetToGray = false;  // align: convert source to grayscale on export
 
     static QString configPath();
     bool load();
