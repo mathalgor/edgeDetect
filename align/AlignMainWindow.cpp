@@ -396,9 +396,13 @@ void AlignMainWindow::applyProjectDirs()
     grayDir_    = project_.grayDir;
     outlineDir_ = project_.outlineDir;
 
-    // Derive JSONL path from the outlineDir's last component.
+    // Derive JSONL path from the outlineDir's last component, stored in
+    // AppDataLocation alongside the per-project times-json file.
     const QString dirName = QDir(outlineDir_).dirName();
-    jsonlPath_  = QDir::currentPath() + "/" + dirName + ".align.jsonl";
+    const QString dataDir = QStandardPaths::writableLocation(
+        QStandardPaths::AppDataLocation);
+    QDir().mkpath(dataDir);
+    jsonlPath_  = QDir(dataDir).filePath(dirName + ".align.jsonl");
 
     jsonlData_.clear();
     loadJsonlFile();
