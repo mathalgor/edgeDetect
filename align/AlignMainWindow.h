@@ -7,15 +7,14 @@
 #include <QStack>
 #include <QMap>
 
-#include <QElapsedTimer>
-#include <QDateTime>
-
 #include "AlignViewWidget.h"
 #include "AppConfig.h"
 #include "ProjectConfig.h"
+#include "TimeTracker.h"
 
 class QSpinBox;
 class QLabel;
+class QPushButton;
 class QCheckBox;
 class QComboBox;
 class QTimer;
@@ -49,14 +48,6 @@ struct AlignState {
 struct FilePair {
     QString grayPath;
     QString outlinePath;
-};
-
-// Accumulated activity time per image
-struct ImageTiming {
-    qint64 activeMs = 0;          // total activity time (ms)
-    int events = 0;               // input event counter
-    qint64 firstEventMs = 0;      // epoch ms (first event)
-    qint64 lastEventMs = 0;       // epoch ms (last event)
 };
 
 // Pin – point linking gray to outline
@@ -241,27 +232,11 @@ private:
     QAction* restoreLastPinsAction_ = nullptr;
     QAction* optimalModeAction_ = nullptr;
 
-    // --- Activity tracking (work time per image) ---
-    QMap<QString, ImageTiming> timings_;       // key = outline_name
-    QString currentTimingKey_;                 // current outline_name
-    QString timingPath_;                       // path to <jsonl>.timing.jsonl
-    qint64 lastActivityMs_ = 0;                // monotonic ms (QElapsedTimer)
-    QElapsedTimer monoTimer_;                  // monotonic clock
-    bool appActive_ = true;                    // status fokusu aplikacji
-
-    QLabel* timingLabel_ = nullptr;            // statusbar label (opcjonalny)
-    QTimer* timingTickTimer_ = nullptr;        // refresh statusbar co 1s
-    QAction* showTimingStatusAction_ = nullptr;
-    QAction* timingStatsAction_ = nullptr;
-
-    void setupActivityTracking();
-    void bumpActivity();                       // called on every input event
-    void switchTimingKey(const QString& newKey);  // przed loadCurrentPair
-    void loadTimings();
-    void saveTimings();
-    void updateTimingLabel();
-    void showTimingStats();
-    void onShowTimingStatusToggled(bool on);
+    // --- Activity tracking (shared with the other three apps) ---
+    TimeTracker  tracker_;
+    QLabel*      timeLabel_ = nullptr;      // status-bar "Time: hh:mm:ss"
+    QPushButton* doneBtn_   = nullptr;      // toolbar Done toggle (top-right)
+    void updateDoneButton(bool done);
 };
 
 #endif // ALIGNMAINWINDOW_H

@@ -31,6 +31,8 @@
 #include <QMouseEvent>
 
 #include "ProjectDialog.h"
+#include "ProjectTimeDialog.h"
+#include <QPushButton>
 #include <QWheelEvent>
 #include <QFileInfo>
 #include <QInputDialog>
@@ -43,7 +45,13 @@ AlignMainWindow::AlignMainWindow(QWidget* parent)
 {
     pins_.resize(pinCount_);
     createUi();
-    setupActivityTracking();
+
+    qApp->installEventFilter(this);
+    connect(&tracker_, &TimeTracker::tick, this,
+            [this](const QString&, qint64 s) {
+                if (timeLabel_)
+                    timeLabel_->setText("Time: " + TimeTracker::formatHMS(s));
+            });
 
     setWindowTitle("Align – gray + outline (dirs)");
     resize(1000, 700);
@@ -118,14 +126,15 @@ void AlignMainWindow::createUi()
     connect(optimalModeAction_, &QAction::triggered, this, &AlignMainWindow::runOptimalMode);
 
     toolsMenu->addSeparator();
-    timingStatsAction_ = toolsMenu->addAction("Timing stats…");
-    connect(timingStatsAction_, &QAction::triggered, this, &AlignMainWindow::showTimingStats);
-
-    QMenu* viewMenu = menuBar()->addMenu("&View");
-    showTimingStatusAction_ = viewMenu->addAction("Show timing in statusbar");
-    showTimingStatusAction_->setCheckable(true);
-    showTimingStatusAction_->setChecked(false);
-    connect(showTimingStatusAction_, &QAction::toggled, this, &AlignMainWindow::onShowTimingStatusToggled);
+    QAction* timingStatsAction = toolsMenu->addAction("Timing stats…");
+    connect(timingStatsAction, &QAction::triggered, this, [this] {
+        QStringList names;
+        names.reserve(pairs_.size());
+        for (const FilePair& p : pairs_)
+            names << QFileInfo(p.outlinePath).fileName();
+        ProjectTimeDialog dlg(&tracker_, names, this);
+        dlg.exec();
+    });
 
     // Timer for spinboxes – detecting end of edit
     spinboxTimer_ = new QTimer(this);
@@ -146,8 +155,8 @@ void AlignMainWindow::createUi()
     QAction* prevAct  = tb->addAction("<");
     QAction* nextAct  = tb->addAction(">");
     QAction* lastAct  = tb->addAction(">|");
-    QAction* firstUnalignedAct = tb->addAction("≠0");
-    firstUnalignedAct->setToolTip("First image without entry in *.align.jsonl");
+    QAction* firstUnalignedAct = tb->addAction("▶?");
+    firstUnalignedAct->setToolTip("Go to first file not marked Done");
 
     connect(firstAct, &QAction::triggered, this, &AlignMainWindow::goFirst);
     connect(prevAct,  &QAction::triggered, this, &AlignMainWindow::goToPrev);
@@ -188,6 +197,28 @@ void AlignMainWindow::createUi()
                 viewPresetCb_->setCurrentIndex(prevViewPresetIndex_);
         });
     }
+
+    // Spacer + Done button (top-right)
+    {
+        auto* spacer = new QWidget(this);
+        spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        tb->addWidget(spacer);
+
+        doneBtn_ = new QPushButton("Done", this);
+        doneBtn_->setCheckable(true);
+        updateDoneButton(false);
+        tb->addWidget(doneBtn_);
+        connect(doneBtn_, &QPushButton::toggled, this, [this](bool on) {
+            if (currentIndex_ >= 0 && currentIndex_ < pairs_.size()) {
+                const QString name = QFileInfo(pairs_[currentIndex_].outlinePath).fileName();
+                tracker_.setDone(name, on);
+            }
+            updateDoneButton(on);
+        });
+    }
+
+    timeLabel_ = new QLabel(this);
+    statusBar()->addPermanentWidget(timeLabel_);
 
     // control panel
     QWidget* ctrlWidget = new QWidget(this);
@@ -365,14 +396,12 @@ void AlignMainWindow::applyProjectDirs()
     grayDir_    = project_.grayDir;
     outlineDir_ = project_.outlineDir;
 
-    // Derive JSONL paths from the outlineDir's last component.
+    // Derive JSONL path from the outlineDir's last component.
     const QString dirName = QDir(outlineDir_).dirName();
     jsonlPath_  = QDir::currentPath() + "/" + dirName + ".align.jsonl";
-    timingPath_ = QDir::currentPath() + "/" + dirName + ".timing.jsonl";
 
     jsonlData_.clear();
     loadJsonlFile();
-    loadTimings();
 
     statusBar()->showMessage(
         QString("Project: gray=%1  outline=%2  JSONL=%3")
@@ -404,6 +433,7 @@ bool AlignMainWindow::loadProjectFromPath(const QString& path)
     appConfig_.save();
     rebuildRecentMenu();
     setWindowTitle(QString("Align – %1").arg(QFileInfo(path).fileName()));
+    tracker_.bindToProject(QFileInfo(path).absoluteFilePath());
     applyProjectDirs();
     return true;
 }
@@ -430,6 +460,7 @@ bool AlignMainWindow::createNewProjectAt(const QString& path)
     appConfig_.save();
     rebuildRecentMenu();
     setWindowTitle(QString("Align – %1").arg(QFileInfo(path).fileName()));
+    tracker_.bindToProject(QFileInfo(path).absoluteFilePath());
     applyProjectDirs();
     return true;
 }
@@ -555,7 +586,11 @@ void AlignMainWindow::loadCurrentPair()
     const QString& outlinePath = pair.outlinePath;
 
     // Switch timing tracker key to new image (flush previous).
-    switchTimingKey(QFileInfo(outlinePath).fileName());
+    const QString outlineName = QFileInfo(outlinePath).fileName();
+    tracker_.setCurrentFile(outlineName);
+    updateDoneButton(tracker_.isDone(outlineName));
+    if (timeLabel_)
+        timeLabel_->setText("Time: " + TimeTracker::formatHMS(tracker_.secondsFor(outlineName)));
 
     cv::Mat gMat, oMat;
     if (!loadImageFile(grayPath, gMat))
@@ -1034,9 +1069,7 @@ void AlignMainWindow::saveJsonlForCurrent()
 
 void AlignMainWindow::closeEvent(QCloseEvent* event)
 {
-    // Flush current key (breaks activity window) and save timing file.
-    switchTimingKey(QString());
-    saveTimings();
+    // TimeTracker flushes in its destructor.
     QMainWindow::closeEvent(event);
 }
 
@@ -1112,15 +1145,15 @@ void AlignMainWindow::goFirstUnaligned()
     if (pairs_.isEmpty())
         return;
 
-    // First image without entry in *.align.jsonl (key = outline_name).
+    // First image not marked Done in the timing tracker.
     for (int i = 0; i < pairs_.size(); ++i) {
-        QString outlineName = QFileInfo(pairs_[i].outlinePath).fileName();
-        if (jsonlData_.contains(outlineName))
+        const QString outlineName = QFileInfo(pairs_[i].outlinePath).fileName();
+        if (tracker_.isDone(outlineName))
             continue;
 
         if (i == currentIndex_) {
             statusBar()->showMessage(
-                QString("You are already on the first unprocessed pair (%1/%2)")
+                QString("You are already on the first not-Done pair (%1/%2)")
                     .arg(i + 1).arg(pairs_.size()),
                 3000);
             return;
@@ -1131,7 +1164,7 @@ void AlignMainWindow::goFirstUnaligned()
         return;
     }
 
-    statusBar()->showMessage("All pairs have been processed", 3000);
+    statusBar()->showMessage("All pairs marked Done", 3000);
 }
 
 // ------------ UNDO / REDO ------------
@@ -1289,7 +1322,7 @@ bool AlignMainWindow::eventFilter(QObject* obj, QEvent* event)
         case QEvent::MouseButtonRelease:
         case QEvent::Wheel:
         case QEvent::KeyPress:
-            bumpActivity();
+            tracker_.registerActivity();
             break;
         default: break;
     }
@@ -2184,199 +2217,18 @@ void AlignMainWindow::runOptimalMode()
     );
 }
 
-// ===== ACTIVITY / TIMING TRACKER =====
-
-namespace {
-constexpr qint64 IDLE_THRESHOLD_MS = 60 * 1000;   // gap > 60s = not counted
-}
-
-void AlignMainWindow::setupActivityTracking()
+void AlignMainWindow::updateDoneButton(bool done)
 {
-    monoTimer_.start();
-    lastActivityMs_ = 0;        // 0 = no previous event
-
-    // Global event filter – captures input regardless of focus.
-    qApp->installEventFilter(this);
-
-    // Application focus state – losing focus is a hard break.
-    connect(qApp, &QApplication::applicationStateChanged, this,
-            [this](Qt::ApplicationState state) {
-                bool active = (state == Qt::ApplicationActive);
-                if (!active && appActive_) {
-                    // Losing focus – flush without counting the last gap.
-                    lastActivityMs_ = 0;
-                }
-                appActive_ = active;
-            });
-
-    // Timer for statusbar ticks (started when option is enabled).
-    timingTickTimer_ = new QTimer(this);
-    timingTickTimer_->setInterval(1000);
-    connect(timingTickTimer_, &QTimer::timeout, this, &AlignMainWindow::updateTimingLabel);
-
-    // Statusbar label (hidden by default)
-    timingLabel_ = new QLabel(this);
-    timingLabel_->hide();
-    statusBar()->addPermanentWidget(timingLabel_);
-}
-
-void AlignMainWindow::bumpActivity()
-{
-    if (!appActive_)
-        return;
-    if (currentTimingKey_.isEmpty())
-        return;
-
-    qint64 now = monoTimer_.elapsed();
-    qint64 nowEpoch = QDateTime::currentMSecsSinceEpoch();
-
-    ImageTiming& t = timings_[currentTimingKey_];
-    if (lastActivityMs_ > 0) {
-        qint64 gap = now - lastActivityMs_;
-        if (gap > 0 && gap <= IDLE_THRESHOLD_MS) {
-            t.activeMs += gap;
-        }
-        // gap > threshold => not counted (break)
-    }
-    if (t.firstEventMs == 0) t.firstEventMs = nowEpoch;
-    t.lastEventMs = nowEpoch;
-    t.events += 1;
-    lastActivityMs_ = now;
-}
-
-void AlignMainWindow::switchTimingKey(const QString& newKey)
-{
-    if (newKey == currentTimingKey_)
-        return;
-    // Reset window – do not continue period from previous image
-    lastActivityMs_ = 0;
-    currentTimingKey_ = newKey;
-    // Save current file state (idempotent)
-    saveTimings();
-    updateTimingLabel();
-}
-
-void AlignMainWindow::loadTimings()
-{
-    timings_.clear();
-    if (timingPath_.isEmpty()) return;
-    QFile f(timingPath_);
-    if (!f.exists()) return;
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
-    while (!f.atEnd()) {
-        QByteArray line = f.readLine().trimmed();
-        if (line.isEmpty()) continue;
-        QJsonParseError err;
-        QJsonDocument doc = QJsonDocument::fromJson(line, &err);
-        if (err.error != QJsonParseError::NoError || !doc.isObject()) continue;
-        QJsonObject o = doc.object();
-        QString name = o["outline_name"].toString();
-        if (name.isEmpty()) continue;
-        ImageTiming t;
-        t.activeMs = qint64(o["active_ms"].toDouble(0));
-        t.events   = o["events"].toInt(0);
-        t.firstEventMs = qint64(o["first_event_ms"].toDouble(0));
-        t.lastEventMs  = qint64(o["last_event_ms"].toDouble(0));
-        timings_[name] = t;
-    }
-}
-
-void AlignMainWindow::saveTimings()
-{
-    if (timingPath_.isEmpty()) return;
-    QFile f(timingPath_);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) return;
-    QTextStream out(&f);
-    for (auto it = timings_.cbegin(); it != timings_.cend(); ++it) {
-        const ImageTiming& t = it.value();
-        QJsonObject o;
-        o["outline_name"]   = it.key();
-        o["active_ms"]      = double(t.activeMs);
-        o["events"]         = t.events;
-        o["first_event_ms"] = double(t.firstEventMs);
-        o["last_event_ms"]  = double(t.lastEventMs);
-        // Human-readable ISO timestamps (informational)
-        if (t.firstEventMs > 0)
-            o["first_event"] = QDateTime::fromMSecsSinceEpoch(t.firstEventMs).toString(Qt::ISODate);
-        if (t.lastEventMs > 0)
-            o["last_event"]  = QDateTime::fromMSecsSinceEpoch(t.lastEventMs).toString(Qt::ISODate);
-        out << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact)) << "\n";
-    }
-}
-
-void AlignMainWindow::updateTimingLabel()
-{
-    if (!timingLabel_ || !timingLabel_->isVisible()) return;
-    if (currentTimingKey_.isEmpty()) {
-        timingLabel_->setText("t=–");
-        return;
-    }
-    // Add current window (if within threshold) – for display only.
-    qint64 ms = timings_.value(currentTimingKey_).activeMs;
-    if (lastActivityMs_ > 0 && appActive_) {
-        qint64 gap = monoTimer_.elapsed() - lastActivityMs_;
-        if (gap > 0 && gap <= IDLE_THRESHOLD_MS) ms += gap;
-    }
-    int sec = int(ms / 1000);
-    int mm = sec / 60, ss = sec % 60;
-    timingLabel_->setText(QString("t=%1m %2s").arg(mm).arg(ss, 2, 10, QChar('0')));
-}
-
-void AlignMainWindow::onShowTimingStatusToggled(bool on)
-{
-    if (!timingLabel_) return;
-    timingLabel_->setVisible(on);
-    if (on) {
-        updateTimingLabel();
-        timingTickTimer_->start();
+    if (!doneBtn_) return;
+    QSignalBlocker b(doneBtn_);
+    doneBtn_->setChecked(done);
+    if (done) {
+        doneBtn_->setText("Done ✓");
+        doneBtn_->setStyleSheet(
+            "QPushButton{background:#c8e6c9;font-weight:bold;}");
     } else {
-        timingTickTimer_->stop();
+        doneBtn_->setText("Not done");
+        doneBtn_->setStyleSheet(
+            "QPushButton{background:#ffe0b2;}");
     }
-}
-
-void AlignMainWindow::showTimingStats()
-{
-    qint64 totalMs = 0;
-    int timedImages = 0;
-    int totalEvents = 0;
-    for (auto it = timings_.cbegin(); it != timings_.cend(); ++it) {
-        totalMs += it.value().activeMs;
-        totalEvents += it.value().events;
-        if (it.value().activeMs > 0) ++timedImages;
-    }
-    qint64 currentMs = currentTimingKey_.isEmpty()
-        ? 0 : timings_.value(currentTimingKey_).activeMs;
-    if (!currentTimingKey_.isEmpty() && lastActivityMs_ > 0 && appActive_) {
-        qint64 gap = monoTimer_.elapsed() - lastActivityMs_;
-        if (gap > 0 && gap <= IDLE_THRESHOLD_MS) currentMs += gap;
-    }
-
-    int totalPairs = pairs_.size();
-    double avgMs = (timedImages > 0) ? (double(totalMs) / timedImages) : 0.0;
-    int remaining = std::max(0, totalPairs - timedImages);
-    qint64 estRemainingMs = qint64(avgMs * remaining);
-
-    auto fmtHm = [](qint64 ms) {
-        int sec = int(ms / 1000);
-        int h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60;
-        return QString("%1h %2m %3s")
-            .arg(h).arg(m, 2, 10, QChar('0')).arg(s, 2, 10, QChar('0'));
-    };
-    auto fmtMs = [](qint64 ms) {
-        int sec = int(ms / 1000);
-        int m = sec / 60, s = sec % 60;
-        return QString("%1m %2s").arg(m).arg(s, 2, 10, QChar('0'));
-    };
-
-    QString msg;
-    msg += QString("Current image:      %1\n").arg(currentTimingKey_.isEmpty() ? "–" : currentTimingKey_);
-    msg += QString("  active time:      %1\n\n").arg(fmtMs(currentMs));
-    msg += QString("Images in timing:   %1\n").arg(timedImages);
-    msg += QString("Pairs in dirs:      %1\n").arg(totalPairs);
-    msg += QString("Total work time:    %1\n").arg(fmtHm(totalMs));
-    msg += QString("Average per image:  %1\n").arg(fmtMs(qint64(avgMs)));
-    msg += QString("Remaining (~):      %1  (%2 images)\n").arg(fmtHm(estRemainingMs)).arg(remaining);
-    msg += QString("Total events:       %1").arg(totalEvents);
-
-    QMessageBox::information(this, "Timing stats", msg);
 }
