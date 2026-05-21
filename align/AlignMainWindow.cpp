@@ -2532,6 +2532,13 @@ void AlignMainWindow::onExportToDataset()
     splitCb->addItem("test");
     if (appConfig_.lastDatasetSplit == "test") splitCb->setCurrentIndex(1);
 
+    auto* modeCb = new QComboBox(&dlg);
+    modeCb->addItem("only new");
+    modeCb->addItem("overwrite");
+    if (appConfig_.lastDatasetMode == "overwrite") modeCb->setCurrentIndex(1);
+    modeCb->setToolTip("only new: skip pairs whose target files already exist; "
+                       "overwrite: always write");
+
     auto* grayCb = new QCheckBox("Convert source to grayscale", &dlg);
     grayCb->setChecked(appConfig_.lastDatasetToGray);
 
@@ -2547,6 +2554,7 @@ void AlignMainWindow::onExportToDataset()
     pathRowW->setLayout(pathRow);
     form->addRow("Dataset root:", pathRowW);
     form->addRow("Split:", splitCb);
+    form->addRow("Mode:", modeCb);
     form->addRow(grayCb);
 
     auto* lay = new QVBoxLayout(&dlg);
@@ -2557,12 +2565,15 @@ void AlignMainWindow::onExportToDataset()
 
     const QString root  = pathEdit->text().trimmed();
     const QString split = splitCb->currentText();
+    const QString mode  = modeCb->currentText();
     const bool toGray   = grayCb->isChecked();
+    const bool overwrite = (mode == "overwrite");
     if (root.isEmpty()) return;
 
     appConfig_.lastDatasetRoot   = root;
     appConfig_.lastDatasetSplit  = split;
     appConfig_.lastDatasetToGray = toGray;
+    appConfig_.lastDatasetMode   = mode;
     appConfig_.save();
 
     const QString srcDir = (split == "train")
@@ -2574,7 +2585,7 @@ void AlignMainWindow::onExportToDataset()
     QDir().mkpath(srcDir);
     QDir().mkpath(outDir);
 
-    int done = 0, ok = 0, skipNoEntry = 0, skipBadFit = 0, skipBadCrop = 0;
+    int done = 0, ok = 0, skipNoEntry = 0, skipBadFit = 0, skipBadCrop = 0, skipExisting = 0;
     QStringList failures;
     bool aborted = false;
     bool skipAllMissing = false;
@@ -2601,6 +2612,17 @@ void AlignMainWindow::onExportToDataset()
         ++done;
 
         const QString srcName = QFileInfo(pair.srcPath).fileName();
+
+        // only-new mode: skip if both target files already exist.
+        if (!overwrite) {
+            const QString srcDstPre = QDir(srcDir).filePath(srcName);
+            const QString outDstPre = QDir(outDir).filePath(outlineName);
+            if (QFileInfo::exists(srcDstPre) && QFileInfo::exists(outDstPre)) {
+                ++skipExisting;
+                continue;
+            }
+        }
+
         const QString entry = jsonlData_.value(outlineName);
         if (entry.isEmpty()) {
             ++skipNoEntry;
@@ -2698,10 +2720,11 @@ void AlignMainWindow::onExportToDataset()
     msg += QString("Split: %1\n").arg(split);
     msg += QString("Source dir:  %1\n").arg(srcDir);
     msg += QString("Outline dir: %1\n\n").arg(outDir);
+    msg += QString("Mode: %1\n").arg(mode);
     msg += QString("Done pairs: %1\n").arg(done);
     msg += QString("Exported:   %1\n").arg(ok);
-    msg += QString("Skipped:    %1 no JSONL entry, %2 bad fit, %3 bad crop\n")
-        .arg(skipNoEntry).arg(skipBadFit).arg(skipBadCrop);
+    msg += QString("Skipped:    %1 existing, %2 no JSONL entry, %3 bad fit, %4 bad crop\n")
+        .arg(skipExisting).arg(skipNoEntry).arg(skipBadFit).arg(skipBadCrop);
     if (aborted) msg += "\nExport aborted by user.";
     if (!failures.isEmpty()) {
         msg += "\nIssues:\n";

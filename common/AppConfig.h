@@ -14,6 +14,7 @@ struct AppConfig {
     QString lastDatasetRoot;
     QString lastDatasetSplit = "train";
     bool    lastDatasetToGray = false;  // align: convert source to grayscale on export
+    QString lastDatasetMode = "only new"; // align: "only new" | "overwrite"
 
     static QString configPath();
     bool load();

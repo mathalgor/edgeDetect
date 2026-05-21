@@ -33,6 +33,7 @@ bool AppConfig::load()
     lastDatasetRoot   = o.value("lastDatasetRoot").toString();
     lastDatasetSplit  = o.value("lastDatasetSplit").toString("train");
     lastDatasetToGray = o.value("lastDatasetToGray").toBool(false);
+    lastDatasetMode   = o.value("lastDatasetMode").toString("only new");
     return true;
 }
 
@@ -47,6 +48,7 @@ bool AppConfig::save() const
     o["lastDatasetRoot"]   = lastDatasetRoot;
     o["lastDatasetSplit"]  = lastDatasetSplit;
     o["lastDatasetToGray"] = lastDatasetToGray;
+    o["lastDatasetMode"]   = lastDatasetMode;
     QDir().mkpath(QFileInfo(configPath()).absolutePath());
     QFile f(configPath());
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
