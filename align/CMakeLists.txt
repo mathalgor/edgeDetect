@@ -4,6 +4,10 @@ add_executable(align
         AlignMainWindow.h
         AlignViewWidget.cpp
         AlignViewWidget.h
+        ProjectConfig.cpp
+        ProjectConfig.h
+        ProjectDialog.cpp
+        ProjectDialog.h
 )
 
 target_link_libraries(align PRIVATE

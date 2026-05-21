@@ -27,7 +27,10 @@
 #include <QTimer>
 #include <QCloseEvent>
 #include <QApplication>
+#include <QStandardPaths>
 #include <QMouseEvent>
+
+#include "ProjectDialog.h"
 #include <QWheelEvent>
 #include <QFileInfo>
 #include <QInputDialog>
@@ -44,6 +47,11 @@ AlignMainWindow::AlignMainWindow(QWidget* parent)
 
     setWindowTitle("Align – gray + outline (dirs)");
     resize(1000, 700);
+
+    appConfig_.load();
+    rebuildRecentMenu();
+    if (!appConfig_.currentProjectPath.isEmpty())
+        loadProjectFromPath(appConfig_.currentProjectPath);
 }
 
 
@@ -54,9 +62,12 @@ void AlignMainWindow::createUi()
     // MENU
     QMenu* fileMenu = menuBar()->addMenu("&File");
 
-    QAction* openGrayDirAct    = fileMenu->addAction("Open gray dir...");
-    QAction* openOutlineDirAct = fileMenu->addAction("Open outline dir...");
-    QAction* saveJsonAct       = fileMenu->addAction("Save current");
+    QAction* newProjAct  = fileMenu->addAction("&New project...");
+    QAction* openProjAct = fileMenu->addAction("&Open project...");
+    recentMenu_          = fileMenu->addMenu("&Recent projects");
+    QAction* setProjAct  = fileMenu->addAction("&Set project dirs...");
+    fileMenu->addSeparator();
+    QAction* saveJsonAct = fileMenu->addAction("Save current");
 
     // MENU EDIT (undo/redo)
     QMenu* editMenu = menuBar()->addMenu("&Edit");
@@ -124,13 +135,12 @@ void AlignMainWindow::createUi()
 
     // TOOLBAR
     QToolBar* tb = addToolBar("Main");
-    tb->addAction(openGrayDirAct);
-    tb->addAction(openOutlineDirAct);
     tb->addAction(saveJsonAct);
 
-    connect(openGrayDirAct,    &QAction::triggered, this, &AlignMainWindow::openGrayDir);
-    connect(openOutlineDirAct, &QAction::triggered, this, &AlignMainWindow::openOutlineDir);
-    connect(saveJsonAct,       &QAction::triggered, this, &AlignMainWindow::saveJsonlForCurrent);
+    connect(newProjAct,  &QAction::triggered, this, &AlignMainWindow::onNewProject);
+    connect(openProjAct, &QAction::triggered, this, &AlignMainWindow::onOpenProject);
+    connect(setProjAct,  &QAction::triggered, this, &AlignMainWindow::onSetProject);
+    connect(saveJsonAct, &QAction::triggered, this, &AlignMainWindow::saveJsonlForCurrent);
 
     QAction* firstAct = tb->addAction("|<");
     QAction* prevAct  = tb->addAction("<");
@@ -326,83 +336,145 @@ bool AlignMainWindow::loadImageFile(const QString& path, cv::Mat& outMat)
     return true;
 }
 
-// ------------ DIRECTORIES AND PAIR LIST ------------
+// ------------ PROJECT AND PAIR LIST ------------
 
-void AlignMainWindow::openGrayDir()
+void AlignMainWindow::rebuildRecentMenu()
 {
-    QString dir = QFileDialog::getExistingDirectory(
-        this,
-        "Open gray directory",
-        "/home/andrzej/AmazonKDP/gray",
-        QFileDialog::DontUseNativeDialog
-    );
-    if (dir.isEmpty())
+    if (!recentMenu_) return;
+    recentMenu_->clear();
+    if (appConfig_.recentProjects.isEmpty()) {
+        auto* a = recentMenu_->addAction("(empty)");
+        a->setEnabled(false);
         return;
-
-    grayDir_ = dir;
-
-    // count files in directory (for status message only)
-    QDir d(grayDir_);
-    QStringList filters;
-    filters << "*.png" << "*.jpg" << "*.jpeg" << "*.bmp" << "*.tif" << "*.tiff";
-    d.setNameFilters(filters);
-    d.setFilter(QDir::Files | QDir::Readable | QDir::NoDotAndDotDot);
-    d.setSorting(QDir::Name);
-
-    QFileInfoList infos = d.entryInfoList();
-
-    statusBar()->showMessage(
-        QString("Gray dir: %1 (%2 files)")
-            .arg(grayDir_)
-            .arg(infos.size()),
-        3000
-    );
-
-    // pairs are created here (based on grayDir_ and outlineDir_)
-    refreshPairsIfReady();
+    }
+    for (const QString& p : appConfig_.recentProjects) {
+        auto* a = recentMenu_->addAction(p);
+        connect(a, &QAction::triggered, this, [this, p]{ loadProjectFromPath(p); });
+    }
+    recentMenu_->addSeparator();
+    auto* clr = recentMenu_->addAction("Clear list");
+    connect(clr, &QAction::triggered, this, [this] {
+        appConfig_.recentProjects.clear();
+        appConfig_.save();
+        rebuildRecentMenu();
+    });
 }
 
-void AlignMainWindow::openOutlineDir()
+void AlignMainWindow::applyProjectDirs()
 {
-    QString dir = QFileDialog::getExistingDirectory(
-        this,
-        "Open outline directory",
-        "/home/andrzej/AmazonKDP/white",
-        QFileDialog::DontUseNativeDialog
-    );
-    if (dir.isEmpty())
-        return;
+    grayDir_    = project_.grayDir;
+    outlineDir_ = project_.outlineDir;
 
-    outlineDir_ = dir;
-
-    // Set JSONL path based on the last component of the directory name
-    QDir d(outlineDir_);
-    QString dirName = d.dirName();  // last path component, e.g. "poczet"
-    jsonlPath_ = QDir::currentPath() + "/" + dirName + ".align.jsonl";
+    // Derive JSONL paths from the outlineDir's last component.
+    const QString dirName = QDir(outlineDir_).dirName();
+    jsonlPath_  = QDir::currentPath() + "/" + dirName + ".align.jsonl";
     timingPath_ = QDir::currentPath() + "/" + dirName + ".timing.jsonl";
 
-    // Clear map and load existing JSONL (if any)
     jsonlData_.clear();
     loadJsonlFile();
     loadTimings();
 
-    QStringList filters;
-    filters << "*.png" << "*.jpg" << "*.jpeg" << "*.bmp" << "*.tif" << "*.tiff";
-    d.setNameFilters(filters);
-    d.setFilter(QDir::Files | QDir::Readable | QDir::NoDotAndDotDot);
-    d.setSorting(QDir::Name);
-
-    QFileInfoList infos = d.entryInfoList();
-
     statusBar()->showMessage(
-        QString("Outline dir: %1 (%2 files)  JSONL: %3")
-            .arg(outlineDir_)
-            .arg(infos.size())
-            .arg(jsonlPath_),
+        QString("Project: gray=%1  outline=%2  JSONL=%3")
+            .arg(grayDir_, outlineDir_, jsonlPath_),
         5000
     );
 
     refreshPairsIfReady();
+}
+
+bool AlignMainWindow::loadProjectFromPath(const QString& path)
+{
+    ProjectConfig nc;
+    if (!nc.load(path)) {
+        QMessageBox::warning(this, "Open project",
+            QString("Failed to read project file:\n%1").arg(path));
+        return false;
+    }
+    const QString err = nc.validationError();
+    if (!err.isEmpty()) {
+        QMessageBox::warning(this, "Open project",
+            QString("Project %1 is invalid:\n%2").arg(path, err));
+        return false;
+    }
+    project_ = nc;
+    projectPath_ = path;
+    appConfig_.currentProjectPath = path;
+    appConfig_.addRecent(path);
+    appConfig_.save();
+    rebuildRecentMenu();
+    setWindowTitle(QString("Align – %1").arg(QFileInfo(path).fileName()));
+    applyProjectDirs();
+    return true;
+}
+
+bool AlignMainWindow::createNewProjectAt(const QString& path)
+{
+    ProjectDialog dlg(ProjectConfig(), this);
+    if (dlg.exec() != QDialog::Accepted) return false;
+    ProjectConfig nc = dlg.config();
+    const QString err = nc.validationError();
+    if (!err.isEmpty()) {
+        QMessageBox::warning(this, "New project", err);
+        return false;
+    }
+    if (!nc.save(path)) {
+        QMessageBox::warning(this, "New project",
+            QString("Failed to save project:\n%1").arg(path));
+        return false;
+    }
+    project_ = nc;
+    projectPath_ = path;
+    appConfig_.currentProjectPath = path;
+    appConfig_.addRecent(path);
+    appConfig_.save();
+    rebuildRecentMenu();
+    setWindowTitle(QString("Align – %1").arg(QFileInfo(path).fileName()));
+    applyProjectDirs();
+    return true;
+}
+
+void AlignMainWindow::onNewProject()
+{
+    const QString startDir = projectPath_.isEmpty()
+        ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+        : QFileInfo(projectPath_).absolutePath();
+    QString path = QFileDialog::getSaveFileName(this, "New project", startDir,
+        "Align project (*.alprj)");
+    if (path.isEmpty()) return;
+    if (!path.endsWith(".alprj", Qt::CaseInsensitive)) path += ".alprj";
+    createNewProjectAt(path);
+}
+
+void AlignMainWindow::onOpenProject()
+{
+    const QString startDir = projectPath_.isEmpty()
+        ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+        : QFileInfo(projectPath_).absolutePath();
+    const QString path = QFileDialog::getOpenFileName(this, "Open project", startDir,
+        "Align project (*.alprj);;All files (*)");
+    if (path.isEmpty()) return;
+    loadProjectFromPath(path);
+}
+
+void AlignMainWindow::onSetProject()
+{
+    if (projectPath_.isEmpty()) {
+        QMessageBox::information(this, "Set project dirs",
+            "First create or open a project (File → New/Open project).");
+        return;
+    }
+    ProjectDialog dlg(project_, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    ProjectConfig nc = dlg.config();
+    const QString err = nc.validationError();
+    if (!err.isEmpty()) {
+        QMessageBox::warning(this, "Set project dirs", err);
+        return;
+    }
+    project_ = nc;
+    project_.save(projectPath_);
+    applyProjectDirs();
 }
 
 void AlignMainWindow::refreshPairsIfReady()

@@ -11,6 +11,8 @@
 #include <QDateTime>
 
 #include "AlignViewWidget.h"
+#include "AppConfig.h"
+#include "ProjectConfig.h"
 
 class QSpinBox;
 class QLabel;
@@ -18,6 +20,7 @@ class QCheckBox;
 class QComboBox;
 class QTimer;
 class QAction;
+class QMenu;
 class QCloseEvent;
 
 // State for undo/redo
@@ -78,9 +81,10 @@ public slots:
     void onDragFinished();      // Ctrl+drag finished – save to undo
 
 private slots:
-    // directories
-    void openGrayDir();
-    void openOutlineDir();
+    // project
+    void onNewProject();
+    void onOpenProject();
+    void onSetProject();
 
     // save current pair to align.jsonl
     void saveJsonlForCurrent();
@@ -162,6 +166,16 @@ private:
     QString outlineDir_;
     QVector<FilePair> pairs_;
     int currentIndex_ = -1;
+
+    // Project (.alprj)
+    AppConfig     appConfig_;
+    ProjectConfig project_;
+    QString       projectPath_;
+    QMenu*        recentMenu_ = nullptr;
+    void rebuildRecentMenu();
+    bool loadProjectFromPath(const QString& path);
+    bool createNewProjectAt(const QString& path);
+    void applyProjectDirs();  // wires grayDir_/outlineDir_/jsonlPath_ from project_
 
     // JSONL - mapa: key=nazwa outline, value=linia JSON
     QString jsonlPath_;
