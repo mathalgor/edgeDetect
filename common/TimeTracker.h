@@ -46,6 +46,10 @@ public:
     // to the *.ctoprj / *.ocproj file. Passing an empty string detaches.
     void bindToProject(const QString& projectAbsolutePath);
     QString projectPath() const { return projectPath_; }
+    // Absolute path of the times-json (e.g. "<AppData>/<stem>.<hash>.times.json").
+    // Empty when not bound. Hosts may use this to derive sibling files that
+    // share the project's identity hash (e.g. align's *.align.jsonl).
+    QString jsonPath() const { return jsonPath_; }
 
     void setCurrentFile(const QString& name);
     QString currentFile() const { return currentFile_; }

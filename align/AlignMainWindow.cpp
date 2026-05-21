@@ -396,13 +396,22 @@ void AlignMainWindow::applyProjectDirs()
     grayDir_    = project_.grayDir;
     outlineDir_ = project_.outlineDir;
 
-    // Derive JSONL path from the outlineDir's last component, stored in
-    // AppDataLocation alongside the per-project times-json file.
-    const QString dirName = QDir(outlineDir_).dirName();
-    const QString dataDir = QStandardPaths::writableLocation(
-        QStandardPaths::AppDataLocation);
-    QDir().mkpath(dataDir);
-    jsonlPath_  = QDir(dataDir).filePath(dirName + ".align.jsonl");
+    // Sibling of the tracker's times-json: share the project-identity hash
+    // so both files travel together. e.g. "<stem>.<hash>.times.json" →
+    // "<stem>.<hash>.align.jsonl".
+    const QString timesPath = tracker_.jsonPath();
+    if (timesPath.endsWith(".times.json", Qt::CaseInsensitive)) {
+        jsonlPath_ = timesPath.left(timesPath.size() - int(strlen(".times.json")))
+                     + ".align.jsonl";
+        QDir().mkpath(QFileInfo(jsonlPath_).absolutePath());
+    } else {
+        // Fallback (shouldn't happen — tracker_ is bound before this).
+        const QString dirName = QDir(outlineDir_).dirName();
+        const QString dataDir = QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation);
+        QDir().mkpath(dataDir);
+        jsonlPath_ = QDir(dataDir).filePath(dirName + ".align.jsonl");
+    }
 
     jsonlData_.clear();
     loadJsonlFile();
@@ -509,6 +518,7 @@ void AlignMainWindow::onSetProject()
     }
     project_ = nc;
     project_.save(projectPath_);
+    tracker_.bindToProject(QFileInfo(projectPath_).absoluteFilePath());
     applyProjectDirs();
 }
 
