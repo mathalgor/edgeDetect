@@ -13,23 +13,23 @@ namespace {
 const double minScale = 0.01;
 const double maxScale = 100.0;
 
-static QImage matToGrayscaleQImage(const cv::Mat& src)
+static QImage matToGrrayscaleQImage(const cv::Mat& src)
 {
     if (src.empty())
         return QImage();
 
-    cv::Mat gray;
+    cv::Mat grray;
     if (src.channels() == 1) {
-        gray = src;
+        grray = src;
     } else {
-        cv::cvtColor(src, gray, cv::COLOR_BGR2GRAY);
+        cv::cvtColor(src, grray, cv::COLOR_BGR2GRAY);
     }
 
-    QImage img(gray.cols, gray.rows, QImage::Format_Grayscale8);
-    for (int y = 0; y < gray.rows; ++y) {
-        const uchar* srcRow = gray.ptr<uchar>(y);
+    QImage img(grray.cols, grray.rows, QImage::Format_Grayscale8);
+    for (int y = 0; y < grray.rows; ++y) {
+        const uchar* srcRow = grray.ptr<uchar>(y);
         uchar* dstRow = img.scanLine(y);
-        std::memcpy(dstRow, srcRow, static_cast<size_t>(gray.cols));
+        std::memcpy(dstRow, srcRow, static_cast<size_t>(grray.cols));
     }
     return img;
 }
@@ -39,19 +39,19 @@ static QImage outlineToRedOverlay(const cv::Mat& src)
     if (src.empty())
         return QImage();
 
-    cv::Mat gray;
+    cv::Mat grray;
     if (src.channels() == 1) {
-        gray = src;
+        grray = src;
     } else {
-        cv::cvtColor(src, gray, cv::COLOR_BGR2GRAY);
+        cv::cvtColor(src, grray, cv::COLOR_BGR2GRAY);
     }
 
-    QImage img(gray.cols, gray.rows, QImage::Format_ARGB32);
+    QImage img(grray.cols, grray.rows, QImage::Format_ARGB32);
 
-    for (int y = 0; y < gray.rows; ++y) {
-        const uchar* srcRow = gray.ptr<uchar>(y);
+    for (int y = 0; y < grray.rows; ++y) {
+        const uchar* srcRow = grray.ptr<uchar>(y);
         QRgb* dstRow = reinterpret_cast<QRgb*>(img.scanLine(y));
-        for (int x = 0; x < gray.cols; ++x) {
+        for (int x = 0; x < grray.cols; ++x) {
             uchar v = srcRow[x];
 
             if (v >= 250) {
@@ -80,12 +80,12 @@ AlignViewWidget::AlignViewWidget(QWidget* parent)
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
-void AlignViewWidget::setGrayImage(const cv::Mat& gray)
+void AlignViewWidget::setSrcImage(const cv::Mat& src)
 {
-    grayMat_ = gray.clone();
-    graySize_ = QSize(grayMat_.cols, grayMat_.rows);
-    updateGrayQImage();
-    grayWarpedDirty_ = true;
+    srcMat_ = src.clone();
+    srcSize_ = QSize(srcMat_.cols, srcMat_.rows);
+    updateSrcQImage();
+   srcWarpedDirty_ = true;
 
     // do NOT reset view – preserve screen scale/pan between images
     // call resetView() to force a reset
@@ -111,11 +111,11 @@ void AlignViewWidget::setShowOutline(bool show)
     update();
 }
 
-void AlignViewWidget::setShowGray(bool show)
+void AlignViewWidget::setShowSrc(bool show)
 {
-    if (showGray_ == show)
+    if (showSrc_ == show)
         return;
-    showGray_ = show;
+    showSrc_ = show;
     update();
 }
 
@@ -142,14 +142,14 @@ void AlignViewWidget::setDelta(double dx, double dy)
     emit parametersChanged();
 }
 
-void AlignViewWidget::setGrayScale(double sx, double sy)
+void AlignViewWidget::setSrcScale(double sx, double sy)
 {
     if (sx < 1.0) sx = 1.0;
     if (sy < 1.0) sy = 1.0;
     if (scaleX_ != sx || scaleY_ != sy) {
         scaleX_ = sx;
         scaleY_ = sy;
-        grayWarpedDirty_ = true;
+       srcWarpedDirty_ = true;
     }
     update();
     emit parametersChanged();
@@ -166,7 +166,7 @@ void AlignViewWidget::setQuadX(double q)
     if (quadX_ == q)
         return;
     quadX_ = q;
-    grayWarpedDirty_ = true;
+   srcWarpedDirty_ = true;
     update();
     emit parametersChanged();
 }
@@ -176,7 +176,7 @@ void AlignViewWidget::setQuadY(double q)
     if (quadY_ == q)
         return;
     quadY_ = q;
-    grayWarpedDirty_ = true;
+   srcWarpedDirty_ = true;
     update();
     emit parametersChanged();
 }
@@ -185,7 +185,7 @@ void AlignViewWidget::setRotXY(double v)
 {
     if (rotXY_ == v) return;
     rotXY_ = v;
-    grayWarpedDirty_ = true;
+   srcWarpedDirty_ = true;
     update();
     emit parametersChanged();
 }
@@ -194,7 +194,7 @@ void AlignViewWidget::setRotYX(double v)
 {
     if (rotYX_ == v) return;
     rotYX_ = v;
-    grayWarpedDirty_ = true;
+   srcWarpedDirty_ = true;
     update();
     emit parametersChanged();
 }
@@ -203,7 +203,7 @@ void AlignViewWidget::setCrossXY(double v)
 {
     if (crossXY_ == v) return;
     crossXY_ = v;
-    grayWarpedDirty_ = true;
+   srcWarpedDirty_ = true;
     update();
     emit parametersChanged();
 }
@@ -212,36 +212,36 @@ void AlignViewWidget::setCrossYX(double v)
 {
     if (crossYX_ == v) return;
     crossYX_ = v;
-    grayWarpedDirty_ = true;
+   srcWarpedDirty_ = true;
     update();
     emit parametersChanged();
 }
 
-void AlignViewWidget::fitGrayToOutline()
+void AlignViewWidget::fitSrcToOutline()
 {
-    // Fit gray to outline preserving aspect ratio
-    if (grayImage_.isNull() || outlineOverlay_.isNull())
+    // Fit src to outline preserving aspect ratio
+    if (srcImage_.isNull() || outlineOverlay_.isNull())
         return;
 
-    double grayW = grayImage_.width();
-    double grayH = grayImage_.height();
+    double srcW = srcImage_.width();
+    double srcH = srcImage_.height();
     double outW  = outlineOverlay_.width();
     double outH  = outlineOverlay_.height();
 
-    if (grayW <= 0 || grayH <= 0)
+    if (srcW <= 0 || srcH <= 0)
         return;
 
-    double grayAspect = grayW / grayH;
+    double srcAspect = srcW / srcH;
     double outAspect  = outW / outH;
 
-    if (grayAspect > outAspect) {
-        // gray is wider – fit to outline width
+    if (srcAspect > outAspect) {
+        // src is wider – fit to outline width
         scaleX_ = outW;
-        scaleY_ = outW / grayAspect;
+        scaleY_ = outW / srcAspect;
     } else {
-        // gray is taller or equal – fit to outline height
+        // src is taller or equal – fit to outline height
         scaleY_ = outH;
-        scaleX_ = outH * grayAspect;
+        scaleX_ = outH * srcAspect;
     }
 
     deltaX_ = 0.0;
@@ -250,10 +250,12 @@ void AlignViewWidget::fitGrayToOutline()
     update();
     emit parametersChanged();
 }
+template <typename>
+constexpr auto AlignViewWidget::qt_create_metaobjectdata() {}
 
-void AlignViewWidget::updateGrayQImage()
+void AlignViewWidget::updateSrcQImage()
 {
-    grayImage_ = matToGrayscaleQImage(grayMat_);
+    srcImage_ = matToGrrayscaleQImage(srcMat_);
 }
 
 void AlignViewWidget::updateOutlineQImage()
@@ -263,7 +265,7 @@ void AlignViewWidget::updateOutlineQImage()
 
 bool AlignViewWidget::hasBothImages() const
 {
-    return !grayImage_.isNull() && !outlineOverlay_.isNull();
+    return !srcImage_.isNull() && !outlineOverlay_.isNull();
 }
 
 double AlignViewWidget::computeFitScale() const
@@ -284,13 +286,13 @@ double AlignViewWidget::computeFitScale() const
     return std::min(sx, sy);
 }
 
-// Anchor swap: gray is "anchored" to widget center (+pan), outline is positioned
-// relative to gray: outline.center = gray.center - delta*viewScale.
+// Anchor swap: src is "anchored" to widget center (+pan), outline is positioned
+// relative to src: outline.center = src.center - delta*viewScale.
 // Ctrl+drag interpreted as "I'm moving the outline" – delta sign flipped in mouseMove.
 
-QRectF AlignViewWidget::grayRectOnWidget() const
+QRectF AlignViewWidget::srcRectOnWidget() const
 {
-    if (grayImage_.isNull())
+    if (srcImage_.isNull())
         return QRectF();
 
     double viewScale = autoFit_ ? computeFitScale() : viewScale_;
@@ -298,12 +300,12 @@ QRectF AlignViewWidget::grayRectOnWidget() const
     double w = scaleX_ * viewScale;
     double h = scaleY_ * viewScale;
 
-    QPointF grayCenter(width() / 2.0, height() / 2.0);
+    QPointF srcCenter(width() / 2.0, height() / 2.0);
     if (!autoFit_)
-        grayCenter += panOffset_;
+        srcCenter += panOffset_;
 
-    double x = grayCenter.x() - w * 0.5;
-    double y = grayCenter.y() - h * 0.5;
+    double x = srcCenter.x() - w * 0.5;
+    double y = srcCenter.y() - h * 0.5;
 
     return QRectF(x, y, w, h);
 }
@@ -318,15 +320,15 @@ QRectF AlignViewWidget::outlineRectOnWidget() const
     double w = outlineOverlay_.width() * viewScale;
     double h = outlineOverlay_.height() * viewScale;
 
-    QPointF grayCenter(width() / 2.0, height() / 2.0);
+    QPointF srcCenter(width() / 2.0, height() / 2.0);
     if (!autoFit_)
-        grayCenter += panOffset_;
+        srcCenter += panOffset_;
 
     double dxScreen = deltaX_ * viewScale;
     double dyScreen = deltaY_ * viewScale;
 
-    // outline.center = gray.center - delta*viewScale (z anchor swap)
-    QPointF outCenter = grayCenter - QPointF(dxScreen, dyScreen);
+    // outline.center = src.center - delta*viewScale (z anchor swap)
+    QPointF outCenter = srcCenter - QPointF(dxScreen, dyScreen);
 
     double x = outCenter.x() - w * 0.5;
     double y = outCenter.y() - h * 0.5;
@@ -365,14 +367,14 @@ inline double invQuad(double o, double a, double c)
 }
 }
 
-void AlignViewWidget::rebuildGrayWarpedIfNeeded()
+void AlignViewWidget::rebuildSrcWarpedIfNeeded()
 {
-    if (!grayWarpedDirty_)
+    if (!srcWarpedDirty_)
         return;
-    grayWarpedDirty_ = false;
-    grayWarped_ = QImage();
+   srcWarpedDirty_ = false;
+   srcWarped_ = QImage();
 
-    if (grayMat_.empty() || graySize_.isEmpty() || scaleX_ <= 0 || scaleY_ <= 0)
+    if (srcMat_.empty() || srcSize_.isEmpty() || scaleX_ <= 0 || scaleY_ <= 0)
         return;
     bool anyNonLinear =
         std::abs(quadX_)   > 1e-15 || std::abs(quadY_)   > 1e-15 ||
@@ -381,15 +383,15 @@ void AlignViewWidget::rebuildGrayWarpedIfNeeded()
     if (!anyNonLinear)
         return;  // purely linear diagonal mode – handled by fast path
 
-    double grayW = graySize_.width();
-    double grayH = graySize_.height();
-    double ax = scaleX_ / grayW;
-    double ay = scaleY_ / grayH;
+    double srcW = srcSize_.width();
+    double srcH = srcSize_.height();
+    double ax = scaleX_ / srcW;
+    double ay = scaleY_ / srcH;
     double cx = quadX_, cy = quadY_;
     double bXY = rotXY_, bYX = rotYX_;
     double eXY = crossXY_, eYX = crossYX_;
-    double halfW = grayW / 2.0;
-    double halfH = grayH / 2.0;
+    double halfW = srcW / 2.0;
+    double halfH = srcH / 2.0;
 
     bool hasCross = std::abs(bXY) > 1e-15 || std::abs(bYX) > 1e-15
                  || std::abs(eXY) > 1e-15 || std::abs(eYX) > 1e-15;
@@ -447,16 +449,16 @@ void AlignViewWidget::rebuildGrayWarpedIfNeeded()
 
     // Hard-cap: cv::remap requires sizes < SHRT_MAX (32767). For memory safety
     // (mapX + mapY = 2 * 4 * W * H bytes) we cap at 16384.
-    // If bbox exceeds this – skip warp (gray renders via linear path).
+    // If bbox exceeds this – skip warp (src renders via linear path).
     constexpr int MAX_CANVAS = 16384;
     if (canvasW > MAX_CANVAS || canvasH > MAX_CANVAS) {
-        qWarning("rebuildGrayWarpedIfNeeded: canvas %d x %d > %d - skipping warp",
+        qWarning("rebuildSrcWarpedIfNeeded: canvas %d x %d > %d - skipping warp",
                  canvasW, canvasH, MAX_CANVAS);
         return;
     }
 
-    grayWarpedOMin_  = oxMin;
-    grayWarpedOMinY_ = oyMin;
+   srcWarpedOMin_  = oxMin;
+   srcWarpedOMinY_ = oyMin;
 
     cv::Mat mapX(canvasH, canvasW, CV_32FC1);
     cv::Mat mapY(canvasH, canvasW, CV_32FC1);
@@ -527,8 +529,8 @@ void AlignViewWidget::rebuildGrayWarpedIfNeeded()
     }
 
     cv::Mat src1ch;
-    if (grayMat_.channels() == 1) src1ch = grayMat_;
-    else cv::cvtColor(grayMat_, src1ch, cv::COLOR_BGR2GRAY);
+    if (srcMat_.channels() == 1) src1ch = srcMat_;
+    else cv::cvtColor(srcMat_, src1ch, cv::COLOR_BGR2GRAY);
 
     cv::Mat warped;
     cv::remap(src1ch, warped, mapX, mapY, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(255));
@@ -537,29 +539,29 @@ void AlignViewWidget::rebuildGrayWarpedIfNeeded()
     for (int y = 0; y < warped.rows; ++y) {
         std::memcpy(img.scanLine(y), warped.ptr<uchar>(y), size_t(warped.cols));
     }
-    grayWarped_ = img;
+   srcWarped_ = img;
 }
 
-QRectF AlignViewWidget::grayWarpedRectOnWidget() const
+QRectF AlignViewWidget::srcWarpedRectOnWidget() const
 {
-    if (grayWarped_.isNull())
+    if (srcWarped_.isNull())
         return QRectF();
 
     double viewScale = autoFit_ ? computeFitScale() : viewScale_;
 
-    // Canvas represents gray in outline-centered space "without delta". In anchor-swap delta
-    // cancels: outCenter = grayCenter - delta*vs, so
+    // Canvas represents src in outline-centered space "without delta". In anchor-swap delta
+    // cancels: outCenter = srcCenter - delta*vs, so
     //   canvas_origin = outCenter + (oMin) * vs + delta*vs
-    //                 = grayCenter + (oMin) * vs
-    QPointF grayCenter(width() / 2.0, height() / 2.0);
+    //                 = srcCenter + (oMin) * vs
+    QPointF srcCenter(width() / 2.0, height() / 2.0);
     if (!autoFit_)
-        grayCenter += panOffset_;
+        srcCenter += panOffset_;
 
-    double w = grayWarped_.width()  * viewScale;
-    double h = grayWarped_.height() * viewScale;
+    double w = srcWarped_.width()  * viewScale;
+    double h = srcWarped_.height() * viewScale;
 
-    double x = grayCenter.x() + grayWarpedOMin_  * viewScale;
-    double y = grayCenter.y() + grayWarpedOMinY_ * viewScale;
+    double x = srcCenter.x() + srcWarpedOMin_  * viewScale;
+    double y = srcCenter.y() + srcWarpedOMinY_ * viewScale;
 
     return QRectF(x, y, w, h);
 }
@@ -575,20 +577,20 @@ void AlignViewWidget::paintEvent(QPaintEvent* event)
     // smooth for downscaling, nearest for upscaling
     p.setRenderHint(QPainter::SmoothPixmapTransform, viewScale <= 1.0);
 
-    // draw gray under outline
-    if (showGray_ && !grayImage_.isNull()) {
+    // draw src under outline
+    if (showSrc_ && !srcImage_.isNull()) {
         bool nonLinear =
             std::abs(quadX_)   > 1e-15 || std::abs(quadY_)   > 1e-15 ||
             std::abs(rotXY_)   > 1e-15 || std::abs(rotYX_)   > 1e-15 ||
             std::abs(crossXY_) > 1e-15 || std::abs(crossYX_) > 1e-15;
         if (nonLinear) {
-            rebuildGrayWarpedIfNeeded();
-            if (!grayWarped_.isNull()) {
-                p.drawImage(grayWarpedRectOnWidget(), grayWarped_);
+            rebuildSrcWarpedIfNeeded();
+            if (!srcWarped_.isNull()) {
+                p.drawImage(srcWarpedRectOnWidget(), srcWarped_);
             }
         } else {
-            QRectF grayRect = grayRectOnWidget();
-            p.drawImage(grayRect, grayImage_);
+            QRectF srcRect = srcRectOnWidget();
+            p.drawImage(srcRect, srcImage_);
         }
     }
 
@@ -621,13 +623,13 @@ void AlignViewWidget::paintEvent(QPaintEvent* event)
             const double dxShaft = arrowLen * std::cos(shaftAngle);
             const double dyShaft = arrowLen * std::sin(shaftAngle);
 
-            // Forward T do liczenia pozycji gray (gdy showUncertainty_)
-            double grayW = double(graySize_.width());
-            double grayH = double(graySize_.height());
+            // Forward T do liczenia pozycji src (gdy showUncertainty_)
+            double srcW = double(srcSize_.width());
+            double srcH = double(srcSize_.height());
             double outlineW = double(outlineSize_.width());
             double outlineH = double(outlineSize_.height());
-            double aX = (grayW > 0) ? (scaleX_ / grayW) : 0.0;
-            double aY = (grayH > 0) ? (scaleY_ / grayH) : 0.0;
+            double aX = ( srcW > 0) ? (scaleX_ / srcW) : 0.0;
+            double aY = (srcH > 0) ? (scaleY_ / srcH) : 0.0;
 
             for (int i = 0; i < pinsToDraw_.size(); ++i) {
                 const DrawPin& pin = pinsToDraw_[i];
@@ -643,22 +645,22 @@ void AlignViewWidget::paintEvent(QPaintEvent* event)
                 // tail upper-right of target (source – "number box")
                 QPointF tail(oxScreen + dxShaft, oyScreen - dyShaft);
 
-                // Pozycja gray pod aktualnym forward T (do "show residuals")
+                // Pozycja src pod aktualnym forward T (do "show residuals")
                 bool drawTwoSegments = false;
-                QPointF grayTarget;
-                if (showUncertainty_ && grayW > 0 && grayH > 0) {
-                    double gxc = pin.grayX - grayW / 2.0;
-                    double gyc = pin.grayY - grayH / 2.0;
+                QPointF srcTarget;
+                if (showUncertainty_ && srcW > 0 && srcH > 0) {
+                    double gxc = pin.srcX - srcW / 2.0;
+                    double gyc = pin.srcY - srcH / 2.0;
                     double oxc = deltaX_ + aX*gxc + rotXY_*gyc
                                + quadX_*gxc*gxc + crossXY_*gxc*gyc;
                     double oyc = deltaY_ + rotYX_*gxc + aY*gyc
                                + quadY_*gyc*gyc + crossYX_*gxc*gyc;
                     double predOX = oxc + outlineW / 2.0;
                     double predOY = oyc + outlineH / 2.0;
-                    grayTarget = QPointF(outRect.left() + predOX * sxFactor,
+                    srcTarget = QPointF(outRect.left() + predOX * sxFactor,
                                          outRect.top()  + predOY * syFactor);
-                    double ddx = grayTarget.x() - outlineTarget.x();
-                    double ddy = grayTarget.y() - outlineTarget.y();
+                    double ddx = srcTarget.x() - outlineTarget.x();
+                    double ddy = srcTarget.y() - outlineTarget.y();
                     drawTwoSegments = (ddx*ddx + ddy*ddy > 0.5);   // > ~0.7 px
                 }
 
@@ -668,7 +670,7 @@ void AlignViewWidget::paintEvent(QPaintEvent* event)
                 if (drawTwoSegments) {
                     // two segments from same source – no arrowhead
                     p.drawLine(tail, outlineTarget);
-                    p.drawLine(tail, grayTarget);
+                    p.drawLine(tail, srcTarget);
                 } else {
                     p.drawLine(tail, outlineTarget);
                     // arrowhead (only when not showing residuals)
@@ -815,7 +817,7 @@ void AlignViewWidget::mouseMoveEvent(QMouseEvent* event)
 
     if (outlineDragging_) {
         // Ctrl+drag → moves OUTLINE visually with cursor (anchor swap).
-        // Gray is anchored to widget; outline.center = gray.center - delta*vs,
+        // Src is anchored to widget; outline.center = src.center - delta*vs,
         // so to move outline right by Δscreen, dX must decrease by Δ/vs.
         double viewScale = autoFit_ ? computeFitScale() : viewScale_;
         if (viewScale <= 0) viewScale = 1.0;
@@ -877,9 +879,9 @@ QPointF AlignViewWidget::screenToOutlineImageCoords(const QPoint& screenPos) con
     return QPointF(imgX, imgY);
 }
 
-QPointF AlignViewWidget::screenToGrayImageCoords(const QPoint& screenPos) const
+QPointF AlignViewWidget::screenToSrcImageCoords(const QPoint& screenPos) const
 {
-    if (graySize_.isEmpty())
+    if (srcSize_.isEmpty())
         return QPointF(-1, -1);
 
     bool nonLinear =
@@ -899,10 +901,10 @@ QPointF AlignViewWidget::screenToGrayImageCoords(const QPoint& screenPos) const
         double oxc = (screenPos.x() - outCenter.x()) / viewScale - deltaX_;
         double oyc = (screenPos.y() - outCenter.y()) / viewScale - deltaY_;
 
-        double grayW = graySize_.width();
-        double grayH = graySize_.height();
-        double ax = scaleX_ / grayW;
-        double ay = scaleY_ / grayH;
+        double srcW = srcSize_.width();
+        double srcH = srcSize_.height();
+        double ax = scaleX_ / srcW;
+        double ay = scaleY_ / srcH;
 
         bool hasCross = std::abs(rotXY_) > 1e-15 || std::abs(rotYX_) > 1e-15
                      || std::abs(crossXY_) > 1e-15 || std::abs(crossYX_) > 1e-15;
@@ -937,20 +939,20 @@ QPointF AlignViewWidget::screenToGrayImageCoords(const QPoint& screenPos) const
                 v -= (-Jyx*Fx + Jxx*Fy) / det;
             }
         }
-        return QPointF(u + grayW / 2.0, v + grayH / 2.0);
+        return QPointF(u + srcW / 2.0, v + srcH / 2.0);
     }
 
-    // Linear mode: relative position in grayRect
-    QRectF grayRect = grayRectOnWidget();
-    if (grayRect.isNull())
+    // Linear mode: relative position in srcRect
+    QRectF srcRect = srcRectOnWidget();
+    if (srcRect.isNull())
         return QPointF(-1, -1);
 
     QPointF pos(screenPos);
-    double relX = (pos.x() - grayRect.left()) / grayRect.width();
-    double relY = (pos.y() - grayRect.top()) / grayRect.height();
+    double relX = (pos.x() - srcRect.left()) / srcRect.width();
+    double relY = (pos.y() - srcRect.top()) / srcRect.height();
 
-    double imgX = relX * graySize_.width();
-    double imgY = relY * graySize_.height();
+    double imgX = relX * srcSize_.width();
+    double imgY = relY * srcSize_.height();
 
     return QPointF(imgX, imgY);
 }

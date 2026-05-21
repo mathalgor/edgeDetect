@@ -15,12 +15,12 @@ class AlignViewWidget : public QWidget
 public:
     explicit AlignViewWidget(QWidget* parent = nullptr);
 
-    void setGrayImage(const cv::Mat& gray);
+    void setSrcImage(const cv::Mat& src);
     void setOutlineImage(const cv::Mat& outline);
 
     // alignment parameters
-    void setDelta(double dx, double dy);       // gray offset relative to outline (in pixels)
-    void setGrayScale(double sx, double sy);   // gray size in pixels (as if gray were 1x1)
+    void setDelta(double dx, double dy);       // src offset relative to outline (in pixels)
+    void setSrcScale(double sx, double sy);   // src size in pixels (as if src were 1x1)
     void setQuadX(double q);                   // quadratic coefficient in X (0 = none)
     void setQuadY(double q);                   // quadratic coefficient in Y (0 = none)
     void setRotXY(double v);                   // coef gyc w X-eq (rotacja/shear)
@@ -39,16 +39,16 @@ public:
     double crossXY()  const { return crossXY_; }
     double crossYX()  const { return crossYX_; }
 
-    // auto-fit gray to outline preserving aspect ratio
-    void fitGrayToOutline();
+    // auto-fit src to outline preserving aspect ratio
+    void fitSrcToOutline();
 
     // rectangles (after scaling and offset) – for margin computation
     bool hasBothImages() const;
 
-    QRectF grayRectOnWidget() const;
+    QRectF srcRectOnWidget() const;
     QRectF outlineRectOnWidget() const;
 
-    QSize originalGraySize() const  { return graySize_; }
+    QSize originalsrcSize() const  { return srcSize_; }
     QSize originalOutlineSize() const { return outlineSize_; }
 
     void resetView();  // reset pan/zoom do fit
@@ -56,11 +56,11 @@ public:
     void setShowOutline(bool show);
     bool showOutline() const { return showOutline_; }
 
-    void setShowGray(bool show);
-    bool showGray() const { return showGray_; }
+    void setShowSrc(bool show);
+    bool showSrc() const { return showSrc_; }
 
     // screen → image coordinate conversion (returns -1,-1 if outside image)
-    QPointF screenToGrayImageCoords(const QPoint& screenPos) const;
+    QPointF screenToSrcImageCoords(const QPoint& screenPos) const;
     QPointF screenToOutlineImageCoords(const QPoint& screenPos) const;
 
     // pins to draw (vector index = pin number - 1)
@@ -69,8 +69,8 @@ public:
         bool confirmed;
         double outlineX;       // marker position on outline (outline image px)
         double outlineY;
-        double grayX;          // position on gray (gray image px) – for forward T in "show uncertainty" mode
-        double grayY;
+        double srcX;          // position on src (src image px) – for forward T in "show uncertainty" mode
+        double srcY;
     };
     void setPinsToDraw(const QVector<DrawPin>& pins);
 
@@ -92,38 +92,38 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
-    void updateGrayQImage();
+    void updateSrcQImage();
     void updateOutlineQImage();
     double computeFitScale() const;
     void applyZoomAt(const QPoint& anchor, double factor);
 
-    void rebuildGrayWarpedIfNeeded();
-    QRectF grayWarpedRectOnWidget() const;
+    void rebuildSrcWarpedIfNeeded();
+    QRectF srcWarpedRectOnWidget() const;
 
-    cv::Mat grayMat_;
+    cv::Mat srcMat_;
     cv::Mat outlineMat_;
 
-    QImage grayImage_;
+    QImage srcImage_;
     QImage outlineOverlay_;
 
-    // gray after quadratic warp (rendered when quadX_ != 0 or quadY_ != 0)
-    QImage grayWarped_;
-    double grayWarpedOMin_ = 0.0;   // left edge of canvas in outline-centered pixels (X)
-    double grayWarpedOMinY_ = 0.0;  // top edge of canvas in outline-centered pixels (Y)
-    bool   grayWarpedDirty_ = true;
+    // src after quadratic warp (rendered when quadX_ != 0 or quadY_ != 0)
+    QImage srcWarped_;
+    double srcWarpedOMin_ = 0.0;   // left edge of canvas in outline-centered pixels (X)
+    double srcWarpedOMinY_ = 0.0;  // top edge of canvas in outline-centered pixels (Y)
+    bool  srcWarpedDirty_ = true;
 
-    QSize graySize_;
+    QSize srcSize_;
     QSize outlineSize_;
 
     // PHYSICAL parameters (saved to JSONL, shown in toolbox)
-    double deltaX_ = 0.0;    // gray offset relative to outline in physical pixels
+    double deltaX_ = 0.0;    // src offset relative to outline in physical pixels
     double deltaY_ = 0.0;
-    double scaleX_ = 100.0;  // target gray size in physical pixels (width)
-    double scaleY_ = 100.0;  // target gray size in physical pixels (height)
-    double quadX_  = 0.0;    // quadratic coef: outline_x_centered += quadX_ * (gray_x_centered)^2
-    double quadY_  = 0.0;    // quadratic coef: outline_y_centered += quadY_ * (gray_y_centered)^2
-    double rotXY_  = 0.0;    // outline_x_centered += rotXY_ * gray_y_centered  (rotation/shear)
-    double rotYX_  = 0.0;    // outline_y_centered += rotYX_ * gray_x_centered
+    double scaleX_ = 100.0;  // target src size in physical pixels (width)
+    double scaleY_ = 100.0;  // target src size in physical pixels (height)
+    double quadX_  = 0.0;    // quadratic coef: outline_x_centered += quadX_ * (src_x_centered)^2
+    double quadY_  = 0.0;    // quadratic coef: outline_y_centered += quadY_ * (src_y_centered)^2
+    double rotXY_  = 0.0;    // outline_x_centered += rotXY_ * src_y_centered  (rotation/shear)
+    double rotYX_  = 0.0;    // outline_y_centered += rotYX_ * src_x_centered
     double crossXY_= 0.0;    // outline_x_centered += crossXY_ * gxc*gyc
     double crossYX_= 0.0;    // outline_y_centered += crossYX_ * gxc*gyc
 
@@ -133,7 +133,7 @@ private:
     bool    autoFit_ = true;    // auto-fit vs fixed zoom mode
 
     bool   showOutline_   = true;
-    bool   showGray_      = true;
+    bool   showSrc_      = true;
     bool   showUncertainty_ = false;
     bool   dragging_      = false;
     bool   outlineDragging_  = false;

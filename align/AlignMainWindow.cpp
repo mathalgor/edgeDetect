@@ -53,7 +53,7 @@ AlignMainWindow::AlignMainWindow(QWidget* parent)
                     timeLabel_->setText("Time: " + TimeTracker::formatHMS(s));
             });
 
-    setWindowTitle("Align – gray + outline (dirs)");
+    setWindowTitle("Align – src + outline (dirs)");
     resize(1000, 700);
 
     appConfig_.load();
@@ -112,7 +112,7 @@ void AlignMainWindow::createUi()
     showResidualsAction->setCheckable(true);
     showResidualsAction->setChecked(false);
     showResidualsAction->setToolTip(
-        "Draws two segments from pin label: to outline position and to gray position "
+        "Draws two segments from pin label: to outline position and to src position "
         "(under current fit). When equal – single line as usual.");
     connect(showResidualsAction, &QAction::toggled, this, [this](bool on) {
         view_->setShowUncertainty(on);
@@ -168,8 +168,8 @@ void AlignMainWindow::createUi()
     tb->addWidget(new QLabel(" View: ", this));
     viewPresetCb_ = new QComboBox(this);
     viewPresetCb_->addItem("outline");        // 0
-    viewPresetCb_->addItem("gray");           // 1
-    viewPresetCb_->addItem("gray+outline");   // 2
+    viewPresetCb_->addItem("source");           // 1
+    viewPresetCb_->addItem("source+outline");   // 2
     viewPresetCb_->setCurrentIndex(viewPresetIndex_);
     tb->addWidget(viewPresetCb_);
     connect(viewPresetCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -224,7 +224,7 @@ void AlignMainWindow::createUi()
     QWidget* ctrlWidget = new QWidget(this);
     QHBoxLayout* ctrlLayout = new QHBoxLayout(ctrlWidget);
 
-    // scaleX / scaleY (gray size in pixels)
+    // scaleX / scaleY (src size in pixels)
     QLabel* sxLbl = new QLabel("scaleX:", ctrlWidget);
     scaleXSpin_ = new QSpinBox(ctrlWidget);
     scaleXSpin_->setRange(1, 5000);
@@ -240,7 +240,7 @@ void AlignMainWindow::createUi()
     connect(scaleYSpin_, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &AlignMainWindow::onScaleYChanged);
 
-    // Delta X/Y (gray offset relative to outline)
+    // Delta X/Y (src offset relative to outline)
     QLabel* dxLbl = new QLabel("deltaX:", ctrlWidget);
     deltaXSpin_ = new QSpinBox(ctrlWidget);
     deltaXSpin_->setRange(-2000, 2000);
@@ -351,9 +351,9 @@ void AlignMainWindow::createUi()
 void AlignMainWindow::applyViewPreset(int idx)
 {
     const bool showOutline = (idx == 0 || idx == 2);
-    const bool showGray    = (idx == 1 || idx == 2);
+    const bool showSrc    = (idx == 1 || idx == 2);
     view_->setShowOutline(showOutline);
-    view_->setShowGray(showGray);
+    view_->setShowSrc(showSrc);
 }
 
 bool AlignMainWindow::loadImageFile(const QString& path, cv::Mat& outMat)
@@ -393,7 +393,7 @@ void AlignMainWindow::rebuildRecentMenu()
 
 void AlignMainWindow::applyProjectDirs()
 {
-    grayDir_    = project_.grayDir;
+    srcDir_    = project_.srcDir;
     outlineDir_ = project_.outlineDir;
 
     // Sibling of the tracker's times-json: share the project-identity hash
@@ -417,8 +417,8 @@ void AlignMainWindow::applyProjectDirs()
     loadJsonlFile();
 
     statusBar()->showMessage(
-        QString("Project: gray=%1  outline=%2  JSONL=%3")
-            .arg(grayDir_, outlineDir_, jsonlPath_),
+        QString("Project: src=%1  outline=%2  JSONL=%3")
+            .arg(srcDir_, outlineDir_, jsonlPath_),
         5000
     );
 
@@ -527,7 +527,7 @@ void AlignMainWindow::refreshPairsIfReady()
     pairs_.clear();
     currentIndex_ = -1;
 
-    if (grayDir_.isEmpty() || outlineDir_.isEmpty())
+    if (srcDir_.isEmpty() || outlineDir_.isEmpty())
         return;
 
     // load file lists from both directories
@@ -548,23 +548,23 @@ void AlignMainWindow::refreshPairsIfReady()
         return map;
     };
 
-    QMap<QString, QString> grayMap    = listImagesInDir(grayDir_);
+    QMap<QString, QString> srcMap    = listImagesInDir(srcDir_);
     QMap<QString, QString> outlineMap = listImagesInDir(outlineDir_);
 
     // create pairs only for names present in both directories
-    for (auto it = grayMap.cbegin(); it != grayMap.cend(); ++it) {
+    for (auto it = srcMap.cbegin(); it != srcMap.cend(); ++it) {
         const QString& base = it.key();
         if (!outlineMap.contains(base))
             continue;
 
         FilePair p;
-        p.grayPath    = it.value();
+        p.srcPath    = it.value();
         p.outlinePath = outlineMap.value(base);
         pairs_.push_back(p);
     }
 
     if (pairs_.isEmpty()) {
-        statusBar()->showMessage("No matching pairs (same basename) between gray and outline dirs.", 5000);
+        statusBar()->showMessage("No matching pairs (same basename) between src and outline dirs.", 5000);
         return;
     }
 
@@ -596,7 +596,7 @@ void AlignMainWindow::loadCurrentPair()
     refreshPinsInView();
 
     const FilePair& pair = pairs_[currentIndex_];
-    const QString& grayPath    = pair.grayPath;
+    const QString& srcPath    = pair.srcPath;
     const QString& outlinePath = pair.outlinePath;
 
     // Switch timing tracker key to new image (flush previous).
@@ -607,7 +607,7 @@ void AlignMainWindow::loadCurrentPair()
         timeLabel_->setText("Time: " + TimeTracker::formatHMS(tracker_.secondsFor(outlineName)));
 
     cv::Mat gMat, oMat;
-    if (!loadImageFile(grayPath, gMat))
+    if (!loadImageFile(srcPath, gMat))
         return;
     if (!loadImageFile(outlinePath, oMat))
         return;
@@ -616,24 +616,24 @@ void AlignMainWindow::loadCurrentPair()
     // and 30 brightest histogram values. If darks dominate,
     // background is black → invert image.
     {
-        cv::Mat grayForHist;
+        cv::Mat srcForHist;
         if (oMat.channels() == 1) {
-            grayForHist = oMat;
+            srcForHist = oMat;
         } else if (oMat.channels() == 3) {
-            cv::cvtColor(oMat, grayForHist, cv::COLOR_BGR2GRAY);
+            cv::cvtColor(oMat, srcForHist, cv::COLOR_BGR2GRAY);
         } else if (oMat.channels() == 4) {
-            cv::cvtColor(oMat, grayForHist, cv::COLOR_BGRA2GRAY);
+            cv::cvtColor(oMat, srcForHist, cv::COLOR_BGRA2GRAY);
         }
-        if (!grayForHist.empty() && grayForHist.depth() == CV_8U) {
+        if (!srcForHist.empty() && srcForHist.depth() == CV_8U) {
             int hist[256] = {0};
-            const int total = grayForHist.rows * grayForHist.cols;
-            if (grayForHist.isContinuous()) {
-                const uchar* p = grayForHist.ptr<uchar>(0);
+            const int total = srcForHist.rows * srcForHist.cols;
+            if (srcForHist.isContinuous()) {
+                const uchar* p = srcForHist.ptr<uchar>(0);
                 for (int i = 0; i < total; ++i) ++hist[p[i]];
             } else {
-                for (int y = 0; y < grayForHist.rows; ++y) {
-                    const uchar* p = grayForHist.ptr<uchar>(y);
-                    for (int x = 0; x < grayForHist.cols; ++x) ++hist[p[x]];
+                for (int y = 0; y < srcForHist.rows; ++y) {
+                    const uchar* p = srcForHist.ptr<uchar>(y);
+                    for (int x = 0; x < srcForHist.cols; ++x) ++hist[p[x]];
                 }
             }
             long long darkSum = 0, brightSum = 0;
@@ -654,11 +654,11 @@ void AlignMainWindow::loadCurrentPair()
         }
     }
 
-    view_->setGrayImage(gMat);
+    view_->setSrcImage(gMat);
     view_->setOutlineImage(oMat);
 
-    // auto-fit gray to outline
-    view_->fitGrayToOutline();
+    // auto-fit src to outline
+    view_->fitSrcToOutline();
 
     // update GUI from view
     {
@@ -782,7 +782,7 @@ void AlignMainWindow::onScaleXChanged(int value)
     }
     spinboxTimer_->start();  // restart timer
 
-    view_->setGrayScale(value, view_->scaleY());
+    view_->setSrcScale(value, view_->scaleY());
     markDirty();
 }
 
@@ -798,36 +798,36 @@ void AlignMainWindow::onScaleYChanged(int value)
     }
     spinboxTimer_->start();  // restart timer
 
-    view_->setGrayScale(view_->scaleX(), value);
+    view_->setSrcScale(view_->scaleX(), value);
     markDirty();
 }
 
 // ------------ MARGINS AND JSONL ------------
 
 void AlignMainWindow::computeMargins(
-    double& grayLeft, double& grayRight,
-    double& grayTop, double& grayBottom,
+    double& srcLeft, double& srcRight,
+    double& srcTop, double& srcBottom,
     double& outlineLeft, double& outlineRight,
     double& outlineTop, double& outlineBottom
 ) const
 {
-    grayLeft = grayRight = grayTop = grayBottom = 0.0;
+    srcLeft = srcRight = srcTop = srcBottom = 0.0;
     outlineLeft = outlineRight = outlineTop = outlineBottom = 0.0;
 
     if (!view_->hasBothImages())
         return;
 
-    QRectF gr = view_->grayRectOnWidget();
+    QRectF gr = view_->srcRectOnWidget();
     QRectF orc = view_->outlineRectOnWidget();
     QRectF inter = gr.intersected(orc);
 
     if (inter.isEmpty())
         return;
 
-    grayLeft   = inter.left()  - gr.left();
-    grayRight  = gr.right()    - inter.right();
-    grayTop    = inter.top()   - gr.top();
-    grayBottom = gr.bottom()   - inter.bottom();
+    srcLeft   = inter.left()  - gr.left();
+    srcRight  = gr.right()    - inter.right();
+    srcTop    = inter.top()   - gr.top();
+    srcBottom = gr.bottom()   - inter.bottom();
 
     outlineLeft   = inter.left()  - orc.left();
     outlineRight  = orc.right()   - inter.right();
@@ -903,18 +903,18 @@ void AlignMainWindow::updateCurrentInMap()
 
     const FilePair& pair = pairs_[currentIndex_];
     QString outlineName = QFileInfo(pair.outlinePath).fileName();
-    QString grayName    = QFileInfo(pair.grayPath).fileName();
+    QString srcName    = QFileInfo(pair.srcPath).fileName();
 
     QSize outlineSize = view_->originalOutlineSize();
-    QSize graySize    = view_->originalGraySize();
+    QSize srcSize    = view_->originalsrcSize();
 
     QJsonArray pinsArr;
     for (const PinPoint& p : lastAppliedPins_) {
         QJsonObject po;
         po["rX"] = int(std::round(p.outlineX));
         po["rY"] = int(std::round(p.outlineY));
-        po["sX"] = int(std::round(p.grayX));
-        po["sY"] = int(std::round(p.grayY));
+        po["sX"] = int(std::round(p.srcX));
+        po["sY"] = int(std::round(p.srcY));
         pinsArr.append(po);
     }
 
@@ -926,11 +926,11 @@ void AlignMainWindow::updateCurrentInMap()
 
     QJsonObject obj;
     obj["outline_name"] = outlineName;
-    obj["gray_name"]    = grayName;
+    obj["src_name"]     = srcName;
     obj["outlineW"]     = outlineSize.width();
     obj["outlineH"]     = outlineSize.height();
-    obj["grayW"]        = graySize.width();
-    obj["grayH"]        = graySize.height();
+    obj["srcW"]        = srcSize.width();
+    obj["srcH"]        = srcSize.height();
     obj["pins"]         = pinsArr;
     obj["fitext"]       = fitext;
 
@@ -966,9 +966,9 @@ bool AlignMainWindow::loadParamsFromMap()
 
     // --- Pin validation ---
     QSize outlineSize = view_->originalOutlineSize();
-    QSize graySize    = view_->originalGraySize();
+    QSize srcSize    = view_->originalsrcSize();
     double oW = outlineSize.width(),  oH = outlineSize.height();
-    double gW = graySize.width(),     gH = graySize.height();
+    double gW = srcSize.width(),     gH = srcSize.height();
 
     QJsonObject fx = obj["fitext"].toObject();
     bool useQX = fx["X2"].toBool(false);
@@ -986,13 +986,13 @@ bool AlignMainWindow::loadParamsFromMap()
         p.confirmed = true;
         p.outlineX = po["rX"].toDouble();
         p.outlineY = po["rY"].toDouble();
-        p.grayX    = po["sX"].toDouble();
-        p.grayY    = po["sY"].toDouble();
+        p.srcX    = po["sX"].toDouble();
+        p.srcY    = po["sY"].toDouble();
         bool inRange =
             p.outlineX >= -1 && p.outlineX <= oW + 1 &&
             p.outlineY >= -1 && p.outlineY <= oH + 1 &&
-            p.grayX    >= -1 && p.grayX    <= gW + 1 &&
-            p.grayY    >= -1 && p.grayY    <= gH + 1;
+            p.srcX    >= -1 && p.srcX    <= gW + 1 &&
+            p.srcY    >= -1 && p.srcY    <= gH + 1;
         if (inRange) ranged.append(p);
         else         ++rangeDropped;
     }
@@ -1056,7 +1056,7 @@ void AlignMainWindow::saveJsonlForCurrent()
 {
     // Update map and save file
     if (!view_->hasBothImages()) {
-        QMessageBox::information(this, "Info", "Both gray and outline must be loaded.");
+        QMessageBox::information(this, "Info", "Both src and outline must be loaded.");
         return;
     }
     if (currentIndex_ < 0 || currentIndex_ >= pairs_.size()) {
@@ -1203,7 +1203,7 @@ void AlignMainWindow::applyState(const AlignState& state)
 {
     suppressUndoPush_ = true;
 
-    view_->setGrayScale(state.scaleX, state.scaleY);
+    view_->setSrcScale(state.scaleX, state.scaleY);
     view_->setDelta(state.deltaX, state.deltaY);
     view_->setQuadX(state.quadX);
     view_->setQuadY(state.quadY);
@@ -1291,7 +1291,7 @@ void AlignMainWindow::redo()
 
 void AlignMainWindow::restore()
 {
-    // Revert to state saved in JSON (or initial from fitGrayToOutline)
+    // Revert to state saved in JSON (or initial from fitSrcToOutline)
     if (!savedStateValid_)
         return;
 
@@ -1455,7 +1455,7 @@ void AlignMainWindow::refreshPinsInView()
     for (int i = 0; i < pins_.size(); ++i) {
         v.append({ pins_[i].active, pins_[i].confirmed,
                    pins_[i].outlineX, pins_[i].outlineY,
-                   pins_[i].grayX,    pins_[i].grayY });
+                   pins_[i].srcX,    pins_[i].srcY });
     }
     view_->setPinsToDraw(v);
 }
@@ -1563,24 +1563,24 @@ void AlignMainWindow::onPinLabelClicked(int slotIndex)
     if (!pins_[slotIndex].active)
         return;
 
-    QSize graySize = view_->originalGraySize();
+    QSize srcSize = view_->originalsrcSize();
     QSize outlineSize = view_->originalOutlineSize();
-    if (graySize.isEmpty() || outlineSize.isEmpty())
+    if (srcSize.isEmpty() || outlineSize.isEmpty())
         return;
 
     const PinPoint& p = pins_[slotIndex];
-    double grayW = graySize.width();
-    double grayH = graySize.height();
+    double srcW = srcSize.width();
+    double srcH = srcSize.height();
     double outlineW = outlineSize.width();
     double outlineH = outlineSize.height();
 
-    double gxc = p.grayX - grayW / 2.0;
-    double gyc = p.grayY - grayH / 2.0;
+    double gxc = p.srcX - srcW / 2.0;
+    double gyc = p.srcY - srcH / 2.0;
     double oxc = p.outlineX - outlineW / 2.0;
     double oyc = p.outlineY - outlineH / 2.0;
 
-    double aX = view_->scaleX() / grayW;
-    double aY = view_->scaleY() / grayH;
+    double aX = view_->scaleX() / srcW;
+    double aY = view_->scaleY() / srcH;
 
     // forward T(p) bez delty
     double ox_no_delta = aX*gxc + view_->rotXY()*gyc
@@ -1617,21 +1617,21 @@ void AlignMainWindow::togglePin(int pinIndex)
         refreshPinsInView();
     } else {
         // Activate pin – save coordinates
-        QPointF grayCoords = view_->screenToGrayImageCoords(lastContextMenuPos_);
+        QPointF srcCoords = view_->screenToSrcImageCoords(lastContextMenuPos_);
         QPointF outlineCoords = view_->screenToOutlineImageCoords(lastContextMenuPos_);
 
         pin.active = true;
         pin.confirmed = false;        // new pin = unconfirmed (green)
-        pin.grayX = grayCoords.x();
-        pin.grayY = grayCoords.y();
+        pin.srcX = srcCoords.x();
+        pin.srcY = srcCoords.y();
         pin.outlineX = outlineCoords.x();
         pin.outlineY = outlineCoords.y();
 
         statusBar()->showMessage(
-            QString("Pin %1: gray(%2,%3) → outline(%4,%5)")
+            QString("Pin %1: src(%2,%3) → outline(%4,%5)")
                 .arg(pinIndex + 1)
-                .arg(pin.grayX, 0, 'f', 1)
-                .arg(pin.grayY, 0, 'f', 1)
+                .arg(pin.srcX, 0, 'f', 1)
+                .arg(pin.srcY, 0, 'f', 1)
                 .arg(pin.outlineX, 0, 'f', 1)
                 .arg(pin.outlineY, 0, 'f', 1),
             3000
@@ -1728,21 +1728,21 @@ double AlignMainWindow::computeAndApplyFromPins(const QVector<PinPoint>& activeP
     if (activePins.isEmpty())
         return 0.0;
 
-    QSize graySize = view_->originalGraySize();
+    QSize srcSize = view_->originalsrcSize();
     QSize outlineSize = view_->originalOutlineSize();
 
-    if (graySize.isEmpty() || outlineSize.isEmpty())
+    if (srcSize.isEmpty() || outlineSize.isEmpty())
         return 0.0;
 
-    double grayW = graySize.width();
-    double grayH = graySize.height();
+    double srcW = srcSize.width();
+    double srcH = srcSize.height();
     double outlineW = outlineSize.width();
     double outlineH = outlineSize.height();
     int n = activePins.size();
 
     // Current scales (needed for pin scale / fallbacks)
-    double currentAX = view_->scaleX() / grayW;
-    double currentAY = view_->scaleY() / grayH;
+    double currentAX = view_->scaleX() / srcW;
+    double currentAY = view_->scaleY() / srcH;
 
     // Centered coordinates and sums
     std::vector<double> gxV(n), gyV(n), oxV(n), oyV(n);
@@ -1753,8 +1753,8 @@ double AlignMainWindow::computeAndApplyFromPins(const QVector<PinPoint>& activeP
 
     for (int i = 0; i < n; ++i) {
         const PinPoint& p = activePins[i];
-        double gxc = p.grayX - grayW / 2.0;
-        double gyc = p.grayY - grayH / 2.0;
+        double gxc = p.srcX - srcW / 2.0;
+        double gyc = p.srcY - srcH / 2.0;
         double oxc = p.outlineX - outlineW / 2.0;
         double oyc = p.outlineY - outlineH / 2.0;
         gxV[i]=gxc; gyV[i]=gyc; oxV[i]=oxc; oyV[i]=oyc;
@@ -1798,14 +1798,14 @@ double AlignMainWindow::computeAndApplyFromPins(const QVector<PinPoint>& activeP
         if (std::abs(detX) > 1e-9) {
             double aX = (2 * sumGxcOxc - sumGxc * sumOxc) / detX;
             newDeltaX = (sumOxc - aX * sumGxc) / 2.0;
-            newScaleX = std::abs(aX * grayW);
+            newScaleX = std::abs(aX * srcW);
         } else {
             newDeltaX = sumOxc / 2.0;
         }
         if (std::abs(detY) > 1e-9) {
             double aY = (2 * sumGycOyc - sumGyc * sumOyc) / detY;
             newDeltaY = (sumOyc - aY * sumGyc) / 2.0;
-            newScaleY = std::abs(aY * grayH);
+            newScaleY = std::abs(aY * srcH);
         } else {
             newDeltaY = sumOyc / 2.0;
         }
@@ -1874,8 +1874,8 @@ double AlignMainWindow::computeAndApplyFromPins(const QVector<PinPoint>& activeP
         if (solveLinearSystem(M, AtA.data(), Atb.data(), x.data())) {
             newDeltaX = x[0];
             newDeltaY = x[1];
-            newScaleX = std::abs(x[colAX] * grayW);
-            newScaleY = std::abs(x[colAY] * grayH);
+            newScaleX = std::abs(x[colAX] * srcW);
+            newScaleY = std::abs(x[colAY] * srcH);
             newQuadX  = (colCX  >= 0) ? x[colCX]  : 0.0;
             newQuadY  = (colCY  >= 0) ? x[colCY]  : 0.0;
             newRotXY  = (colBXY >= 0) ? x[colBXY] : 0.0;
@@ -1953,8 +1953,8 @@ double AlignMainWindow::computeAndApplyFromPins(const QVector<PinPoint>& activeP
 
         newDeltaX = bX;
         newDeltaY = bY;
-        newScaleX = std::abs(aX * grayW);
-        newScaleY = std::abs(aY * grayH);
+        newScaleX = std::abs(aX * srcW);
+        newScaleY = std::abs(aY * srcH);
         if (newScaleX < 1.0) newScaleX = 1.0;
         if (newScaleY < 1.0) newScaleY = 1.0;
         newQuadX = cX;
@@ -1963,8 +1963,8 @@ double AlignMainWindow::computeAndApplyFromPins(const QVector<PinPoint>& activeP
 
 
     // Compute RMS and max(|residual|) per pin (forward T)
-    double newAX = newScaleX / grayW;
-    double newAY = newScaleY / grayH;
+    double newAX = newScaleX / srcW;
+    double newAY = newScaleY / srcH;
     double sumSqErr = 0.0;
     double maxAbs = 0.0;
     int maxAbsIdx = 0;
@@ -2038,7 +2038,7 @@ double AlignMainWindow::computeAndApplyFromPins(const QVector<PinPoint>& activeP
     }
 
     // Apply new values
-    view_->setGrayScale(newScaleX, newScaleY);
+    view_->setSrcScale(newScaleX, newScaleY);
     view_->setDelta(newDeltaX, newDeltaY);
     view_->setQuadX(newQuadX);
     view_->setQuadY(newQuadY);

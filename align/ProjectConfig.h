@@ -4,7 +4,7 @@
 #include <QString>
 
 struct ProjectConfig {
-    QString grayDir;     // required — gray (source) images
+    QString srcDir;     // required — source images
     QString outlineDir;  // required — target outlines (same basenames)
 
     bool isValid() const;

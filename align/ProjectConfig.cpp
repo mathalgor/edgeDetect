@@ -13,9 +13,9 @@ bool ProjectConfig::isValid() const
 
 QString ProjectConfig::validationError() const
 {
-    if (grayDir.isEmpty())    return QStringLiteral("grayDir is not set");
-    if (!QDir(grayDir).exists())
-        return QStringLiteral("grayDir does not exist: %1").arg(grayDir);
+    if (srcDir.isEmpty())    return QStringLiteral("srcDir is not set");
+    if (!QDir(srcDir).exists())
+        return QStringLiteral("srcDir does not exist: %1").arg(srcDir);
     if (outlineDir.isEmpty()) return QStringLiteral("outlineDir is not set");
     if (!QDir(outlineDir).exists())
         return QStringLiteral("outlineDir does not exist: %1").arg(outlineDir);
@@ -29,7 +29,7 @@ bool ProjectConfig::load(const QString& path)
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
     if (!doc.isObject()) return false;
     const auto o = doc.object();
-    grayDir    = o.value("grayDir").toString();
+    srcDir    = o.value("srcDir").toString();
     outlineDir = o.value("outlineDir").toString();
     return true;
 }
@@ -37,7 +37,7 @@ bool ProjectConfig::load(const QString& path)
 bool ProjectConfig::save(const QString& path) const
 {
     QJsonObject o;
-    o["grayDir"]    = grayDir;
+    o["srcDir"]    = srcDir;
     o["outlineDir"] = outlineDir;
     QDir().mkpath(QFileInfo(path).absolutePath());
     QFile f(path);

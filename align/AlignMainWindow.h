@@ -46,17 +46,17 @@ struct AlignState {
 };
 
 struct FilePair {
-    QString grayPath;
+    QString srcPath;
     QString outlinePath;
 };
 
-// Pin – point linking gray to outline
+// Pin – point linking src to outline
 struct PinPoint {
     bool active = false;        // whether the pin is set
     bool confirmed = false;     // true = participated in the last Apply (blue color)
                                 // false = freshly placed, not yet confirmed (green)
-    double grayX = 0.0;         // position on gray (image pixels, 0..grayW)
-    double grayY = 0.0;
+    double srcX = 0.0;         // position on rc (image pixels, 0..srcW)
+    double srcY = 0.0;
     double outlineX = 0.0;      // position on outline (image pixels, 0..outlineW)
     double outlineY = 0.0;
 };
@@ -125,8 +125,8 @@ private:
 
     // JSONL
     void computeMargins(
-        double& grayLeft, double& grayRight,
-        double& grayTop, double& grayBottom,
+        double& srcLeft, double& srcRight,
+        double& srcTop, double& srcBottom,
         double& outlineLeft, double& outlineRight,
         double& outlineTop, double& outlineBottom
     ) const;
@@ -153,7 +153,7 @@ private:
     QLabel* fitInfoLabel_ = nullptr;   // permanent label showing last fit result
 
     // directories and files
-    QString grayDir_;
+    QString srcDir_;
     QString outlineDir_;
     QVector<FilePair> pairs_;
     int currentIndex_ = -1;
@@ -166,7 +166,7 @@ private:
     void rebuildRecentMenu();
     bool loadProjectFromPath(const QString& path);
     bool createNewProjectAt(const QString& path);
-    void applyProjectDirs();  // wires grayDir_/outlineDir_/jsonlPath_ from project_
+    void applyProjectDirs();  // wires srcDir_/outlineDir_/jsonlPath_ from project_
 
     // JSONL - mapa: key=nazwa outline, value=linia JSON
     QString jsonlPath_;
@@ -174,7 +174,7 @@ private:
     bool dirty_ = false;
 
     QComboBox*      viewPresetCb_ = nullptr;
-    int             viewPresetIndex_ = 2;     // 0=outline, 1=gray, 2=gray+outline
+    int             viewPresetIndex_ = 2;     // 0=outline, 1=src, 2=src+outline
     int             prevViewPresetIndex_ = 2; // for Tab swap
     void            applyViewPreset(int idx);
     QCheckBox*      quadXCheck_ = nullptr;
@@ -194,7 +194,7 @@ private:
     QAction* restoreAction_ = nullptr;
 
     // restore – revert to state saved in JSON
-    AlignState savedState_{};                     // state saved in JSON (or initial from fitGrayToOutline)
+    AlignState savedState_{};                     // state saved in JSON (or initial from fitSrcToOutline)
     bool savedStateValid_ = false;
 
     // spinbox edit tracking - wykrywanie tymczasowych edycji
@@ -239,4 +239,6 @@ private:
     void updateDoneButton(bool done);
 };
 
+template <typename>
+constexpr auto AlignMainWindow::qt_create_metaobjectdata() {}
 #endif // ALIGNMAINWINDOW_H

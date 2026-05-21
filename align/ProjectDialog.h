@@ -15,7 +15,7 @@ public:
 
 private:
     void browseFor(QLineEdit* le, const QString& title);
-    QLineEdit* grayEdit_;
+    QLineEdit* srcEdit_;
     QLineEdit* outlineEdit_;
 };
 
