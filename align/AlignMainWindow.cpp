@@ -1502,10 +1502,12 @@ void AlignMainWindow::updateCheckboxesEnabled()
     }
 
     // For each checkbox: enabled iff it can be turned on (or is already on).
-    if (quadXCheck_) quadXCheck_->setEnabled(qX || requiredPins(true, qY, R, XY) <= n);
-    if (quadYCheck_) quadYCheck_->setEnabled(qY || requiredPins(qX, true, R, XY) <= n);
-    if (rotCheck_)   rotCheck_->setEnabled  (R  || requiredPins(qX, qY, true, XY) <= n);
-    if (xyCheck_)    xyCheck_->setEnabled   (XY || requiredPins(qX, qY, R, true) <= n);
+    // When the pair is locked (Done), keep all four hard-disabled.
+    const bool unlock = !editLocked_;
+    if (quadXCheck_) quadXCheck_->setEnabled(unlock && (qX || requiredPins(true, qY, R, XY) <= n));
+    if (quadYCheck_) quadYCheck_->setEnabled(unlock && (qY || requiredPins(qX, true, R, XY) <= n));
+    if (rotCheck_)   rotCheck_->setEnabled  (unlock && (R  || requiredPins(qX, qY, true, XY) <= n));
+    if (xyCheck_)    xyCheck_->setEnabled   (unlock && (XY || requiredPins(qX, qY, R, true) <= n));
 }
 
 void AlignMainWindow::setPinCount()
