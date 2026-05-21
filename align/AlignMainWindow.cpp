@@ -145,6 +145,40 @@ void AlignMainWindow::createUi()
     connect(lastAct,  &QAction::triggered, this, &AlignMainWindow::goLast);
     connect(firstUnalignedAct, &QAction::triggered, this, &AlignMainWindow::goFirstUnaligned);
 
+    tb->addSeparator();
+    tb->addWidget(new QLabel(" View: ", this));
+    viewPresetCb_ = new QComboBox(this);
+    viewPresetCb_->addItem("outline");        // 0
+    viewPresetCb_->addItem("gray");           // 1
+    viewPresetCb_->addItem("gray+outline");   // 2
+    viewPresetCb_->setCurrentIndex(viewPresetIndex_);
+    tb->addWidget(viewPresetCb_);
+    connect(viewPresetCb_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int i){
+        if (i == viewPresetIndex_) return;
+        prevViewPresetIndex_ = viewPresetIndex_;
+        viewPresetIndex_ = i;
+        applyViewPreset(i);
+    });
+    applyViewPreset(viewPresetIndex_);
+
+    // Digit shortcuts 1/2/3 → presets; Tab → swap with previous preset
+    for (int i = 0; i < 3; ++i) {
+        QShortcut* sc = new QShortcut(QKeySequence(Qt::Key_1 + i), this);
+        sc->setContext(Qt::ApplicationShortcut);
+        connect(sc, &QShortcut::activated, this, [this, i]{
+            viewPresetCb_->setCurrentIndex(i);
+        });
+    }
+    {
+        QShortcut* scTab = new QShortcut(QKeySequence(Qt::Key_Tab), this);
+        scTab->setContext(Qt::ApplicationShortcut);
+        connect(scTab, &QShortcut::activated, this, [this]{
+            if (prevViewPresetIndex_ != viewPresetIndex_)
+                viewPresetCb_->setCurrentIndex(prevViewPresetIndex_);
+        });
+    }
+
     // control panel
     QWidget* ctrlWidget = new QWidget(this);
     QHBoxLayout* ctrlLayout = new QHBoxLayout(ctrlWidget);
@@ -199,20 +233,6 @@ void AlignMainWindow::createUi()
     ctrlLayout->addWidget(dyLbl);
     ctrlLayout->addWidget(deltaYSpin_);
     ctrlLayout->addSpacing(20);
-
-    showOutlineCheck_ = new QCheckBox("outline", ctrlWidget);
-    showOutlineCheck_->setChecked(true);
-    connect(showOutlineCheck_, &QCheckBox::toggled, this, [this](bool on){
-        view_->setShowOutline(on);
-    });
-    ctrlLayout->addWidget(showOutlineCheck_);
-
-    QCheckBox* showGrayCheck = new QCheckBox("gray", ctrlWidget);
-    showGrayCheck->setChecked(true);
-    connect(showGrayCheck, &QCheckBox::toggled, this, [this](bool on){
-        view_->setShowGray(on);
-    });
-    ctrlLayout->addWidget(showGrayCheck);
 
     quadXCheck_ = new QCheckBox(QString::fromUtf8("X²"), ctrlWidget);
     quadXCheck_->setChecked(false);
@@ -285,6 +305,14 @@ void AlignMainWindow::createUi()
     view_->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(view_, &QWidget::customContextMenuRequested,
             this, &AlignMainWindow::onPinContextMenu);
+}
+
+void AlignMainWindow::applyViewPreset(int idx)
+{
+    const bool showOutline = (idx == 0 || idx == 2);
+    const bool showGray    = (idx == 1 || idx == 2);
+    view_->setShowOutline(showOutline);
+    view_->setShowGray(showGray);
 }
 
 bool AlignMainWindow::loadImageFile(const QString& path, cv::Mat& outMat)

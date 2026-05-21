@@ -168,7 +168,10 @@ private:
     QMap<QString, QString> jsonlData_;
     bool dirty_ = false;
 
-    QCheckBox*      showOutlineCheck_ = nullptr;
+    QComboBox*      viewPresetCb_ = nullptr;
+    int             viewPresetIndex_ = 2;     // 0=outline, 1=gray, 2=gray+outline
+    int             prevViewPresetIndex_ = 2; // for Tab swap
+    void            applyViewPreset(int idx);
     QCheckBox*      quadXCheck_ = nullptr;
     QCheckBox*      quadYCheck_ = nullptr;
     QCheckBox*      rotCheck_   = nullptr;
