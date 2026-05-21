@@ -775,19 +775,22 @@ void AlignViewWidget::wheelEvent(QWheelEvent* event)
 void AlignViewWidget::mousePressEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton) {
-        // Hit-test of pin number label boxes
-        QPointF pos(event->pos());
-        for (const auto& pr : pinLabelRects_) {
-            if (pr.first.contains(pos)) {
-                emit pinLabelClicked(pr.second);
-                event->accept();
-                return;
+        // Hit-test of pin number label boxes (suppressed when editing locked)
+        if (!editLocked_) {
+            QPointF pos(event->pos());
+            for (const auto& pr : pinLabelRects_) {
+                if (pr.first.contains(pos)) {
+                    emit pinLabelClicked(pr.second);
+                    event->accept();
+                    return;
+                }
             }
         }
 
         dragging_ = true;
-        // Shift+drag only works when outline is visible
-        outlineDragging_ = showOutline_ && (event->modifiers() & Qt::ShiftModifier);
+        // Shift+drag only works when outline is visible AND not locked
+        outlineDragging_ = !editLocked_ && showOutline_
+                           && (event->modifiers() & Qt::ShiftModifier);
         lastMousePos_ = event->pos();
 
         if (outlineDragging_) {

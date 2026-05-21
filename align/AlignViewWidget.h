@@ -77,6 +77,9 @@ public:
     void setShowUncertainty(bool show);
     bool showUncertainty() const { return showUncertainty_; }
 
+    void setEditLocked(bool on) { editLocked_ = on; }
+    bool editLocked() const { return editLocked_; }
+
 signals:
     void parametersChanged();     // triggers margin recomputation outside
     void beforePhysicalChange();  // emitted before a physical change (Ctrl+drag) – for undo
@@ -137,6 +140,7 @@ private:
     bool   showUncertainty_ = false;
     bool   dragging_      = false;
     bool   outlineDragging_  = false;
+    bool   editLocked_    = false;
     QPoint lastMousePos_;
 
     QVector<DrawPin> pinsToDraw_;

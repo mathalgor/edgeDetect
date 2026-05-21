@@ -214,6 +214,7 @@ void AlignMainWindow::createUi()
                 tracker_.setDone(name, on);
             }
             updateDoneButton(on);
+            setEditLocked(on);
         });
     }
 
@@ -602,7 +603,9 @@ void AlignMainWindow::loadCurrentPair()
     // Switch timing tracker key to new image (flush previous).
     const QString outlineName = QFileInfo(outlinePath).fileName();
     tracker_.setCurrentFile(outlineName);
-    updateDoneButton(tracker_.isDone(outlineName));
+    const bool done = tracker_.isDone(outlineName);
+    updateDoneButton(done);
+    setEditLocked(done);
     if (timeLabel_)
         timeLabel_->setText("Time: " + TimeTracker::formatHMS(tracker_.secondsFor(outlineName)));
 
@@ -1373,6 +1376,8 @@ bool AlignMainWindow::eventFilter(QObject* obj, QEvent* event)
 void AlignMainWindow::onPinContextMenu(const QPoint& pos)
 {
     if (!view_->hasBothImages())
+        return;
+    if (editLocked_)
         return;
 
     // Remember click position (in widget coordinates)
@@ -2245,4 +2250,23 @@ void AlignMainWindow::updateDoneButton(bool done)
         doneBtn_->setStyleSheet(
             "QPushButton{background:#ffe0b2;}");
     }
+}
+
+void AlignMainWindow::setEditLocked(bool on)
+{
+    editLocked_ = on;
+    const bool en = !on;
+    if (scaleXSpin_) scaleXSpin_->setEnabled(en);
+    if (scaleYSpin_) scaleYSpin_->setEnabled(en);
+    if (deltaXSpin_) deltaXSpin_->setEnabled(en);
+    if (deltaYSpin_) deltaYSpin_->setEnabled(en);
+    if (quadXCheck_) quadXCheck_->setEnabled(en);
+    if (quadYCheck_) quadYCheck_->setEnabled(en);
+    if (rotCheck_)   rotCheck_->setEnabled(en);
+    if (xyCheck_)    xyCheck_->setEnabled(en);
+    if (undoAction_)    undoAction_->setEnabled(en && !undoStack_.isEmpty());
+    if (redoAction_)    redoAction_->setEnabled(en && !redoStack_.isEmpty());
+    if (restoreAction_) restoreAction_->setEnabled(en && savedStateValid_);
+    if (optimalModeAction_) optimalModeAction_->setEnabled(en && !lastAppliedPins_.isEmpty());
+    if (view_) view_->setEditLocked(on);
 }

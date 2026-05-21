@@ -236,7 +236,9 @@ private:
     TimeTracker  tracker_;
     QLabel*      timeLabel_ = nullptr;      // status-bar "Time: hh:mm:ss"
     QPushButton* doneBtn_   = nullptr;      // toolbar Done toggle (top-right)
+    bool         editLocked_ = false;
     void updateDoneButton(bool done);
+    void setEditLocked(bool on);
 };
 
 template <typename>
