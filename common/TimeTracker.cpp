@@ -34,13 +34,28 @@ void TimeTracker::setIdleSeconds(int s)
 QString TimeTracker::jsonPathFor(const QString& projectAbsolutePath) const
 {
     const QString stem = QFileInfo(projectAbsolutePath).completeBaseName();
+
+    // Hash the project's content (canonicalized as compact JSON when possible)
+    // so the times-file ID follows what the project means, not where it lives.
+    QByteArray payload;
+    QFile pf(projectAbsolutePath);
+    if (pf.open(QIODevice::ReadOnly)) {
+        const QByteArray raw = pf.readAll();
+        QJsonParseError err{};
+        const QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
+        payload = (err.error == QJsonParseError::NoError)
+                      ? doc.toJson(QJsonDocument::Compact)
+                      : raw;
+    } else {
+        payload = projectAbsolutePath.toUtf8();
+    }
     const QByteArray hash = QCryptographicHash::hash(
-        projectAbsolutePath.toUtf8(), QCryptographicHash::Md5).toHex();
+        payload, QCryptographicHash::Md5).toHex();
+
     const QString base = QStandardPaths::writableLocation(
-        QStandardPaths::AppConfigLocation);
-    const QString dir = QDir(base).filePath("projects");
-    return QDir(dir).filePath(stem + "." + QString::fromLatin1(hash.left(8))
-                              + ".times.json");
+        QStandardPaths::AppDataLocation);
+    return QDir(base).filePath(stem + "." + QString::fromLatin1(hash.left(8))
+                               + ".times.json");
 }
 
 void TimeTracker::bindToProject(const QString& projectAbsolutePath)

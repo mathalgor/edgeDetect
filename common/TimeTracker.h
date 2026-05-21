@@ -26,7 +26,10 @@ class QTimer;
 //   the gap exceeded the window, it is dropped entirely.
 //
 // State (per file: accumulated seconds + done flag) persists to
-// $XDG_CONFIG_HOME/edgeDetect/<app>/projects/<stem>.<hash>.times.json.
+// $XDG_DATA_HOME/edgeDetect/<app>/<stem>.<hash>.times.json, where
+// <hash> = first 8 hex of MD5 over the project's canonicalized contents
+// (compact JSON), so the file follows the project's meaning rather than
+// its filesystem path.
 // The host calls bindToProject() once per project and setCurrentFile()
 // whenever the active source changes. Flush is automatic (60 s timer +
 // on every switch + on destruction).
